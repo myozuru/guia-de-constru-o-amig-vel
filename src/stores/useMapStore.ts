@@ -137,6 +137,10 @@ export interface Entity {
   invocationInstanceId?: string;
   /** Estado de PV da instância materializada (não é o estado de aquisição do modelo). */
   invocationState?: 'ativa' | 'caida' | 'derrotada' | 'dissipada';
+  /** Horda materializada em um token; invocationId continua apontando ao líder para usar sua ficha/ações. */
+  invocationHordeId?: string;
+  invocationHordeMemberIds?: string[];
+  invocationHordeSizeIncreases?: number;
   /** Pontos de Vida Temporários do token de invocação, absorvidos antes de PV. */
   invocationTempHp?: number;
   /** Defesa e deslocamento próprios do servo (sem criar turno separado). */

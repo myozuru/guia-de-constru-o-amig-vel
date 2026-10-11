@@ -6,7 +6,7 @@ import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
 import { useMapStore } from '@/stores/useMapStore';
 import { useInventoryStore } from '@/stores/useInventoryStore';
 import { validarIntermediarioInvocacao } from '@/lib/controlador/intermediario';
-import { invocarControladores, recolherInvocacao, limparInvocacoesDerrotadas, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, rolarPericiaInvocacao, type DirecaoInvocacao } from '@/lib/controlador/mapa';
+import { invocarControladores, invocarHordaControlador, recolherInvocacao, limparInvocacoesDerrotadas, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, rolarPericiaInvocacao, type DirecaoInvocacao } from '@/lib/controlador/mapa';
 import { limiteInvocacoesConhecidas, limiteAtivasPersonagem, validarCatalogoControlador, type InvocacaoControlador, type TipoInvocacaoControlador } from '@/lib/controlador/tipos';
 import { podeUsarVersaoAprovada } from '@/lib/controlador/aprovacao';
 import { carregarAssetFicha } from '@/lib/controlador/assetFicha';
@@ -18,6 +18,7 @@ import { invocacaoTreinadaNaPericia, parseFormulaDanoInvocacao } from '@/lib/con
 import { bonusPericiaCaracteristicas } from '@/lib/controlador/passivas';
 import { definirAutomacaoInvocacao } from '@/lib/controlador/autonomia';
 import { useProfileStore } from '@/stores/useProfileStore';
+import { calcularHorda } from '@/lib/controlador/hordas';
 
 type Fonte = { id: string; nome: string; tipo: 'grimorio' | 'omni'; hp: number; defesa: number; deslocamento: number; porte: InvocacaoControlador['porte']; acoes: InvocacaoControlador['acoes'] };
 const numero = (valor: unknown, padrao: number): number => {
@@ -63,6 +64,10 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
   const [motivosOverride, setMotivosOverride] = useState<Record<string, string>>({});
   const [direcao, setDirecao] = useState<DirecaoInvocacao>('leste');
   const [invocacoesSelecionadas, setInvocacoesSelecionadas] = useState<string[]>([]);
+  const [hordaLiderId, setHordaLiderId] = useState('');
+  const [hordaMembrosIds, setHordaMembrosIds] = useState<string[]>([]);
+  const [hordaTempoQuantidade, setHordaTempoQuantidade] = useState('');
+  const [hordaTempoUnidade, setHordaTempoUnidade] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [alvosAtaque, setAlvosAtaque] = useState<Record<string, string>>({});
   const [alvosAtaqueMultiplo, setAlvosAtaqueMultiplo] = useState<Record<string, string[]>>({});
@@ -238,6 +243,100 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
   const controlador = character.specialization === 'Controlador';
   const max = controlador ? limiteInvocacoesConhecidas(character.level) : null;
   const ativas = limiteAtivasPersonagem(character.specialization, character.treinoControle ?? 0);
+  const ordemGrauHorda = { quarto: 1, terceiro: 2, segundo: 3, primeiro: 4, especial: 5 } as const;
+  const hordaLider = catalogo.find(inv => inv.id === hordaLiderId);
+  const hordaMembros = hordaMembrosIds.map(id => catalogo.find(inv => inv.id === id)).filter((inv): inv is InvocacaoControlador => Boolean(inv));
+  const componenteHorda = (inv: InvocacaoControlador) => inv.grau ? {
+    id: inv.id,
+    grau: inv.grau,
+    pvAtual: inv.hpAtual,
+    pvMaximo: inv.hpMaximo,
+    custoInvocacaoPE: inv.custoInvocacaoPE,
+  } : null;
+  const liderComponenteHorda = hordaLider ? componenteHorda(hordaLider) : null;
+  const membrosComponentesHorda = hordaMembros.map(componenteHorda);
+  const hordaPreview = liderComponenteHorda && hordaMembrosIds.length > 0 &&
+    membrosComponentesHorda.length === hordaMembrosIds.length && membrosComponentesHorda.every(Boolean)
+    ? calcularHorda({
+      id: 'horda-preview',
+      lider: liderComponenteHorda,
+      membros: membrosComponentesHorda.filter((item): item is NonNullable<typeof item> => Boolean(item)),
+      nivelDono: character.level,
+      maximoInvocacoesEmCampo: ativas,
+      tempoAdicional: {
+        quantidade: hordaTempoQuantidade.trim() ? Number(hordaTempoQuantidade) : Number.NaN,
+        unidade: hordaTempoUnidade,
+      },
+    })
+    : null;
+  const hordaTempoPreview = hordaTempoQuantidade.trim() && hordaTempoUnidade.trim()
+    ? tempoAdicionalEmSegundos({ quantidade: Number(hordaTempoQuantidade), unidade: hordaTempoUnidade })
+    : { ok: false as const, motivo: 'Defina o tempo da Horda na criação.' };
+  const hordaModelosVinculados = new Set<string>();
+  for (const instancia of character.instanciasInvocacao ?? []) {
+    if (!instancia.composicaoHorda || instancia.estado === 'dissipada') continue;
+    hordaModelosVinculados.add(instancia.composicaoHorda.liderModeloId);
+    instancia.composicaoHorda.membros.forEach(membro => hordaModelosVinculados.add(membro.modeloId));
+  }
+  for (const token of ativos) {
+    if (!token.invocationHordeId) continue;
+    if (token.invocationId) hordaModelosVinculados.add(token.invocationId);
+    token.invocationHordeMemberIds?.forEach(id => hordaModelosVinculados.add(id));
+  }
+  const membrosHordaDisponiveis = hordaLider?.grau
+    ? catalogo.filter(inv => inv.id !== hordaLider.id && inv.grau && ordemGrauHorda[inv.grau] < ordemGrauHorda[hordaLider.grau!])
+    : [];
+  const formarHorda = async () => {
+    if (carregandoArteId) return;
+    if (!hordaLider || hordaMembros.length !== hordaMembrosIds.length || hordaMembros.length < 1) {
+      setErro('Escolha um líder e pelo menos um membro para a Horda.'); return;
+    }
+    if (!hordaPreview) { setErro('Confira a composição e o tempo da Horda.'); return; }
+    if (!hordaPreview.ok) { setErro(hordaPreview.motivo); return; }
+    if (!hordaTempoPreview.ok) { setErro(hordaTempoPreview.motivo); return; }
+    if (!Object.values(useMapStore.getState().entities).some(entity => entity.characterId === character.id && !entity.invocationId)) {
+      setErro('Coloque o token do Controlador no mapa primeiro.'); return;
+    }
+    const eventoId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : 'evento-horda-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    try {
+      setErro(''); setMensagem(''); setCarregandoArteId('horda');
+      const assetIds = [hordaLider.imagemAssetId, hordaLider.imagemFallbackAssetId].filter((assetId): assetId is string => Boolean(assetId));
+      if (assetIds.length) await Promise.all(assetIds.map(assetId => carregarAssetFicha(assetId)));
+      const posicoes = await useMapStore.getState().requestInvocationPlacement({
+        ownerCharacterId: character.id,
+        items: [{
+          invocationId: 'horda-' + eventoId,
+          label: `Horda de ${hordaLider.apelido?.trim() || hordaLider.nome}`,
+          alcanceM: hordaLider.alcanceInvocacaoM ?? 0,
+          color: hordaLider.corIdentificacao ?? '#8055bd',
+        }],
+      });
+      if (!posicoes) { setMensagem('Posicionamento da Horda cancelado.'); return; }
+      const posicao = posicoes[0];
+      if (!posicao) { setErro('O mapa não retornou a posição da Horda.'); return; }
+      const ids = [hordaLider.id, ...hordaMembrosIds];
+      const resultado = invocarHordaControlador(character.id, {
+        eventoId,
+        liderId: hordaLider.id,
+        membrosIds: hordaMembrosIds,
+        tempoAdicional: { quantidade: Number(hordaTempoQuantidade), unidade: hordaTempoUnidade },
+        x: posicao.x,
+        y: posicao.y,
+        motivosOverrideIntermediario: Object.fromEntries(ids.map(id => [id, motivosOverride[id] ?? ''])),
+      });
+      if (!resultado.ok) { setErro(resultado.motivo); return; }
+      setHordaLiderId(''); setHordaMembrosIds([]); setHordaTempoQuantidade(''); setHordaTempoUnidade('');
+      setInvocacoesSelecionadas([]);
+      setErro('');
+      setMensagem('Horda criada como uma única entidade, com PV e contribuição de tempo compartilhados. A ficha do líder fornece as ações.');
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Não foi possível preparar o posicionamento da Horda.');
+    } finally {
+      setCarregandoArteId(null);
+    }
+  };
   const fontes: Fonte[] = [
     ...criaturasGrimorio(),
     ...Object.values(entidades).filter(e => e.categoria !== 'condicao' && e.categoria !== 'voto').map(e => ({
@@ -454,17 +553,73 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
           {carregandoArteId === 'lote' ? 'Preparando posicionamento…' : 'Invocar selecionadas (' + invocacoesSelecionadas.length + '/2)'}
         </button>
       </div>
+      {controlador && <section className="space-y-2 rounded border border-primary/40 p-3" aria-label="Criar Horda">
+        <strong className="text-xs">Criar Horda</strong>
+        <p className="text-xs text-muted-foreground">Escolha um líder de Primeiro Grau ou inferior e membros de grau inferior ao dele. A Horda ocupa uma vaga e usa uma única ficha de PV; as ações vêm do líder.</p>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <label className="text-xs">Líder
+            <select aria-label="Líder da Horda" value={hordaLiderId} onChange={event => { setHordaLiderId(event.target.value); setHordaMembrosIds([]); }} className="mt-1 w-full rounded border border-input bg-background p-2">
+              <option value="">Escolha uma invocação</option>
+              {catalogo.filter(inv => inv.grau && inv.grau !== 'especial').map(inv => <option key={inv.id} value={inv.id} disabled={hordaModelosVinculados.has(inv.id) || ativos.some(token => token.invocationId === inv.id) || Boolean(inv.perdaPermanente) || !podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada })}>{inv.apelido?.trim() || inv.nome} · {inv.grau}</option>)}
+            </select>
+          </label>
+          <div className="text-xs">
+            <label className="block">Contribuição de tempo da Horda
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <input aria-label="Quantidade de tempo da Horda" type="number" min="0" step="any" value={hordaTempoQuantidade} onChange={event => setHordaTempoQuantidade(event.target.value)} placeholder="Quantidade" className="w-full rounded border border-input bg-background p-2" />
+                <input aria-label="Unidade de tempo da Horda" value={hordaTempoUnidade} onChange={event => setHordaTempoUnidade(event.target.value)} placeholder="segundos, turnos…" className="w-full rounded border border-input bg-background p-2" />
+              </div>
+            </label>
+            <span className="mt-1 block text-muted-foreground">Sem valor inicial ou limite máximo; informe a quantidade e a unidade a cada criação.</span>
+          </div>
+        </div>
+        {hordaLiderId && <fieldset className="space-y-1 rounded border border-border p-2">
+          <legend className="px-1 text-xs">Membros (limite: {Math.max(0, ativas - 1)})</legend>
+          {membrosHordaDisponiveis.length === 0
+            ? <p className="text-xs text-muted-foreground">Não há membros elegíveis. Confira o grau do líder e as fichas do catálogo.</p>
+            : membrosHordaDisponiveis.map(inv => {
+              const indisponivel = hordaModelosVinculados.has(inv.id) || ativos.some(token => token.invocationId === inv.id) || Boolean(inv.perdaPermanente) || !podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada });
+              return <label key={inv.id} className="flex items-center gap-2 text-xs">
+                <input type="checkbox" aria-label={'Adicionar ' + inv.nome + ' à Horda'} checked={hordaMembrosIds.includes(inv.id)} disabled={indisponivel || !!carregandoArteId} onChange={event => setHordaMembrosIds(current => event.target.checked ? [...current, inv.id] : current.filter(id => id !== inv.id))} />
+                {inv.apelido?.trim() || inv.nome} · {inv.grau} · PV {inv.hpAtual}/{inv.hpMaximo}{indisponivel ? ' · indisponível' : ''}
+              </label>;
+            })}
+        </fieldset>}
+        {hordaPreview?.ok
+          ? <p className="text-xs" role="status">Prévia: PV compartilhados {hordaPreview.horda.pvAtual}/{hordaPreview.horda.pvMaximo} · custo {hordaPreview.horda.custoInvocacaoPE} PE · {hordaPreview.horda.quantidadeMembros} membro(s) · tempo único +{hordaTempoPreview.ok ? formatarSegundosTempoInvocacao(hordaTempoPreview.segundos) : '—'} s.</p>
+          : hordaLiderId && hordaMembrosIds.length > 0 && <p className="text-xs text-amber-300" role="status">{hordaPreview && !hordaPreview.ok ? hordaPreview.motivo : 'Confira o grau e o tempo da composição.'}</p>}
+        <button type="button" className="rounded border border-primary px-3 py-2 text-xs disabled:opacity-50" disabled={!!carregandoArteId || !hordaPreview?.ok || !hordaTempoPreview.ok || !hordaMembrosIds.length} onClick={() => void formarHorda()}>
+          {carregandoArteId === 'horda' ? 'Preparando Horda…' : 'Posicionar Horda no mapa'}
+        </button>
+      </section>}
       <p className="text-xs text-muted-foreground">Selecione até duas fichas e clique no mapa para escolher uma célula livre para cada uma. Invocar é Ação Livre por enquanto. Fichas com 0 PV continuam invocáveis e entram Caídas; descanso longo restaura 100% dos PV.</p>
       {mensagem && <p role="status" className="text-xs text-muted-foreground">{mensagem}</p>}
       {catalogo.map(inv => {
         const arte = assetForFicha(inv);
         const estadoIntermediario = validarIntermediarioInvocacao(inv, character, itensInventario, catalogo);
+        const instanciaHorda = [...(character.instanciasInvocacao ?? [])].reverse().find(item =>
+          item.estado !== 'dissipada' && item.composicaoHorda &&
+          (item.composicaoHorda.liderModeloId === inv.id || item.composicaoHorda.membros.some(membro => membro.modeloId === inv.id)));
+        const composicaoHorda = instanciaHorda?.composicaoHorda;
+        const emHorda = Boolean(composicaoHorda);
+        const ehLiderHorda = composicaoHorda?.liderModeloId === inv.id;
+        const ehMembroHorda = Boolean(composicaoHorda?.membros.some(membro => membro.modeloId === inv.id));
+        const tokenHorda = instanciaHorda
+          ? ativos.find(entity => entity.invocationInstanceId === instanciaHorda.id || entity.invocationHordeId === composicaoHorda?.id)
+          : undefined;
         const token = ativos.find(entity => entity.invocationId === inv.id);
         const ativo = Boolean(token);
         const instancia = token
           ? character.instanciasInvocacao?.find(item => item.id === token.invocationInstanceId || item.tokenId === token.id)
-          : [...(character.instanciasInvocacao ?? [])].reverse().find(item => item.modeloId === inv.id);
+          : instanciaHorda ?? [...(character.instanciasInvocacao ?? [])].reverse().find(item => item.modeloId === inv.id);
         const estadoInstancia = token?.invocationState ?? instancia?.estado;
+        const pvAtualExibido = emHorda
+          ? tokenHorda?.hp ?? instanciaHorda?.hpAtual ?? inv.hpAtual
+          : token?.hp ?? instancia?.hpAtual ?? inv.hpAtual;
+        const pvMaximoExibido = emHorda
+          ? tokenHorda?.hpMax ?? instanciaHorda?.hpMaximoAtual ?? inv.hpMaximo
+          : token?.hpMax ?? instancia?.hpMaximoAtual ?? inv.hpMaximo;
+        const liderHorda = composicaoHorda && catalogo.find(item => item.id === composicaoHorda.liderModeloId);
         const resolucaoDerrota = instancia?.resolucaoDerrota;
         const contribuicaoTempo = instancia?.contribuicaoTempo;
         const tempoConfigurado = tempoAdicionalEmSegundos(inv.tempoAdicional);
@@ -496,7 +651,11 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
           });
         const opcoesAlvoSuporte = [...personagensAlvoSuporte, ...invocacoesAlvoSuporte];
         const movimentoDisponivel = (instancia?.economiaAcoes?.acaoMovimento?.atual ?? 0) > 0;
-        const rotuloEstado = inv.perdaPermanente || resolucaoDerrota?.resultado === 'perda_permanente'
+        const rotuloEstado = emHorda
+          ? ehMembroHorda
+            ? `Integrante da Horda de ${liderHorda?.apelido?.trim() || liderHorda?.nome || 'invocação'}; sem PV individual`
+            : `Líder de Horda com ${composicaoHorda?.membros.length ?? 0} membro(s)`
+          : inv.perdaPermanente || resolucaoDerrota?.resultado === 'perda_permanente'
           ? 'Perda permanente registrada'
           : estadoInstancia === 'derrotada'
             ? 'Derrotada — aguardando resolução'
@@ -514,16 +673,17 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
         const podeIntervirNaAutonomia = isMaster || Boolean(character.profileId && activeProfileId === character.profileId);
         const podeResolverDerrota = isMaster;
         const alcanceConfigurado = Number.isFinite(inv.alcanceInvocacaoM) && (inv.alcanceInvocacaoM ?? -1) >= 0;
-        const podeSelecionar = !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
+        const podeSelecionar = !emHorda && !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
         return (
         <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border p-2">
           <div className="flex items-center gap-2">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border" style={{ borderColor: inv.corIdentificacao ?? '#8055bd' }}>
               {arte ? <img key={assetsTick} src={arte.url} alt={inv.imagemAltText || inv.apelido || inv.nome} className="h-full w-full object-cover" /> : <span className="text-xs text-muted-foreground">Sem arte</span>}
             </div>
-            <div><strong>{inv.apelido?.trim() || inv.nome}</strong><div className="text-xs text-muted-foreground">{inv.tipo === 'shikigami' ? 'Shikigami' : 'Corpo Amaldiçoado'} · PV {inv.hpAtual}/{inv.hpMaximo} · Defesa {inv.defesa} · {inv.deslocamentoM} m · {inv.custoInvocacaoPE} PE · {inv.acoes.length} ações</div></div>
+            <div><strong>{inv.apelido?.trim() || inv.nome}</strong><div className="text-xs text-muted-foreground">{inv.tipo === 'shikigami' ? 'Shikigami' : 'Corpo Amaldiçoado'} · PV {pvAtualExibido}/{pvMaximoExibido}{emHorda ? ' compartilhados' : ''} · Defesa {inv.defesa} · {inv.deslocamentoM} m · {inv.custoInvocacaoPE} PE · {inv.acoes.length} ações</div></div>
           </div>
           <div className={'basis-full text-xs ' + (derrotaPendente ? 'text-destructive' : estadoInstancia === 'caida' ? 'text-amber-300' : 'text-muted-foreground')}>Estado de combate: {rotuloEstado}{estadoInstancia === 'derrotada' && instancia ? ` (PV ${instancia.hpAtual})` : ''}</div>
+          {ehLiderHorda && <div className="basis-full text-xs text-amber-300">A Horda usa um único token, pool de PV e contribuição temporal. A dissipação fica bloqueada até definir como os PV gerais retornam às fichas individuais.</div>}
           {resolucaoDerrota && <div className="basis-full text-xs text-muted-foreground">
             {resolucaoDerrota.resultado === 'recuperada'
               ? resolucaoDerrota.pvRecuperados !== undefined
@@ -531,7 +691,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                 : `Derrota resolvida pelo Mestre; a ficha retorna com 100% dos PV após um descanso longo. PV ao ser derrotada: ${resolucaoDerrota.pvNaDerrota}.`
               : `Perda permanente registrada com ${resolucaoDerrota.pvNaDerrota} PV; ficha arquivada.`}
           </div>}
-          {derrotaPendente && podeResolverDerrota && instancia && <div className="basis-full space-y-2 rounded border border-destructive/50 p-2">
+          {derrotaPendente && podeResolverDerrota && instancia && (!emHorda || ehLiderHorda) && <div className="basis-full space-y-2 rounded border border-destructive/50 p-2">
             <p className="text-xs">Somente o Mestre decide. Ao autorizar a recuperação, a invocação fica com 0 PV até um descanso longo, que restaura 100% dos PV. A perda permanente só pode ser declarada após atingir −100% dos PV máximos. A instância derrotada fica no histórico.</p>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className="rounded border border-primary px-2 py-2 text-xs" onClick={() => resolverDerrota(inv.id, 'recuperada')}>Autorizar recuperação</button>
@@ -559,7 +719,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
           <div className={'basis-full text-xs ' + (alcanceConfigurado ? 'text-muted-foreground' : 'text-amber-300')}>Alcance de posicionamento: {alcanceConfigurado ? (inv.alcanceInvocacaoM ?? 0) + ' m' : 'não definido — edite a ficha antes de invocar'}</div>
           {inv.origemAquisicao && <div className="basis-full text-xs text-muted-foreground">Origem da aquisição: {inv.origemAquisicao === 'interludio' ? 'Interlúdio' : inv.origemAquisicao}</div>}
           {inv.referenciaInterludio && <div className="basis-full text-xs text-muted-foreground">Referência do Interlúdio: {inv.referenciaInterludio}</div>}
-          {isMaster && !estadoIntermediario.ok && podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada }) && !ativos.some(e => e.invocationId === inv.id) && (
+          {isMaster && !emHorda && !estadoIntermediario.ok && podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada }) && !ativos.some(e => e.invocationId === inv.id) && (
             <div className="basis-full flex flex-wrap items-center gap-2">
               <input aria-label={'Motivo do override do intermediário de ' + inv.nome} value={motivosOverride[inv.id] ?? ''} onChange={event => setMotivosOverride(state => ({ ...state, [inv.id]: event.target.value }))} placeholder="Motivo do override do Mestre" className="min-w-48 rounded border bg-background px-2 py-1 text-xs" />
 
@@ -581,12 +741,12 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
             </div>
           )}
           <div className="flex shrink-0 flex-wrap gap-1">
-            {onEditFicha && <button type="button" disabled={inv.perdaPermanente || busyAprovacao || inv.aprovacaoMestre === 'pendente'} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => onEditFicha(inv.id)}>Editar ficha</button>}
+            {onEditFicha && <button type="button" disabled={emHorda || inv.perdaPermanente || busyAprovacao || inv.aprovacaoMestre === 'pendente'} title={emHorda ? 'A ficha está vinculada a uma Horda.' : undefined} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => onEditFicha(inv.id)}>Editar ficha</button>}
             {ativo ? (
               <>
                 {estadoInstancia === 'caida' && <button type="button" disabled={(token?.hp ?? 0) <= 0 || !movimentoDisponivel} title={!movimentoDisponivel ? 'Ação de Movimento própria indisponível.' : undefined} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => levantar(inv.id)}>Levantar (Ação de Movimento)</button>}
                 <button type="button" disabled={estadoInstancia === 'caida'} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => comandar(inv.id)}>Comandar movimento (bônus)</button>
-                <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => recolher(inv.id)}>Recolher</button>
+                <button type="button" disabled={emHorda} title={emHorda ? 'A dissipação da Horda depende da regra de retorno dos PV compartilhados.' : undefined} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => recolher(inv.id)}>Recolher</button>
               </>
             ) : (
                 <label className="flex items-center gap-2 rounded border border-primary px-2 py-1 text-xs">
@@ -594,20 +754,20 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                   Selecionar para invocar
                 </label>
             )}
-            <button type="button" disabled={inv.perdaPermanente || ativo || derrotaPendente || inv.aprovacaoMestre === 'pendente' || busyAprovacao} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => remover(inv.id)}>Remover</button>
+            <button type="button" disabled={emHorda || inv.perdaPermanente || ativo || derrotaPendente || inv.aprovacaoMestre === 'pendente' || busyAprovacao} title={emHorda ? 'A ficha está vinculada a uma Horda.' : undefined} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => remover(inv.id)}>Remover</button>
           </div>
           <div className="basis-full space-y-2 border-t border-border/60 pt-2">
             <div className="flex items-center justify-between gap-2">
               <strong className="text-xs">Ataques personalizados</strong>
-              <button type="button" disabled={inv.perdaPermanente} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => setEditando(editando === inv.id ? null : inv.id)}>Adicionar ataque</button>
+              <button type="button" disabled={inv.perdaPermanente || emHorda} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => setEditando(editando === inv.id ? null : inv.id)}>Adicionar ataque</button>
             </div>
             {inv.acoes.filter(a => a.tipo === 'ataque' || a.teste === 'ataque' || a.teste === 'resistencia').map(a => (
               <div key={a.id} className="flex items-center justify-between text-xs">
                 <span>{a.nome}: {a.dano ?? 'sem dano'} · {a.alcanceM ?? 1.5} m · acerto {a.bonusAtaque ?? 0}</span>
-                <button type="button" disabled={inv.perdaPermanente} className="rounded border px-2 py-1 disabled:opacity-50" onClick={() => removerAtaque(inv.id, a.id)}>Excluir</button>
+                <button type="button" disabled={inv.perdaPermanente || emHorda} className="rounded border px-2 py-1 disabled:opacity-50" onClick={() => removerAtaque(inv.id, a.id)}>Excluir</button>
               </div>
             ))}
-            {editando === inv.id && !inv.perdaPermanente && (
+            {editando === inv.id && !inv.perdaPermanente && !emHorda && (
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs">Nome<input aria-label="Nome do ataque" value={nomeAtaque} onChange={e => setNomeAtaque(e.target.value)} className="w-full rounded border bg-background p-2" /></label>
                 <label className="text-xs">Dano<input aria-label="Dados de dano" value={formulaAtaque} onChange={e => setFormulaAtaque(e.target.value)} placeholder="2d12+1d6+3" className="w-full rounded border bg-background p-2" /></label>

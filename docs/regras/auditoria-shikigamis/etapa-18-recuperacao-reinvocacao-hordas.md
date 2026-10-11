@@ -1,6 +1,6 @@
 # Etapa 18 — Recuperação, reinvocação, perda e Hordas
 
-**Status:** recuperação e decisões de derrota implementadas; cálculo-base de Hordas implementado, mas criação e uso em combate ainda pendentes.
+**Status:** recuperação e decisões de derrota implementadas; Hordas já podem ser criadas e persistidas no mapa como uma única entidade com PV e contribuição temporal compartilhados. Efeitos de combate e dissipação ainda estão pendentes.
 
 ## Decisões confirmadas em 2026-10-11
 
@@ -12,6 +12,7 @@
 - A duração e os efeitos da incapacitação ficam pendentes de revisão. A regra antiga de cura parcial e levantar com Ação de Movimento precisa ser revisada; não foi criada uma duração provisória.
 - O relógio é global, sem prioridade entre contribuições, e termina para todas as invocações quando o saldo global acaba. A retirada voluntária tem piso de 10 segundos.
 - O limite de Hordas ativas é metade do limite de invocações, arredondado para baixo. Uma Horda tem uma única contribuição de tempo ao relógio global e um total geral compartilhado de PV; os integrantes não recebem relógios nem pools de PV individuais.
+- Quando a Horda perde metade dos membros ao chegar à metade dos PV máximos, arredonda-se para baixo a quantidade de membros perdidos. O ajuste do PV atual quando o máximo diminui continua sem regra definida.
 
 ## Implementado
 
@@ -20,21 +21,25 @@
 - `useCharacterStore.applyLongRest` chama a restauração de invocações junto ao descanso longo normal.
 - A interface remove a escolha manual de PV e apresenta ao Mestre as decisões de recuperação ou perda permanente.
 - `hordas.ts` valida os graus e integrantes permitidos pelo texto-base e calcula PV compartilhados, custo PE adicional, efeitos por quantidade de membros e um único campo de tempo para a entidade.
+- `mapa.ts` materializa a Horda com um token e uma instância, grava a composição e o PV compartilhado, cobra o PE total e registra uma contribuição temporal. A Horda conta como uma vaga; seus membros não podem ser invocados individualmente enquanto permanecerem vinculados.
+- A aba **Invocações** permite selecionar líder, membros e contribuição temporal na criação, mostra a prévia de PV/custo e identifica as fichas vinculadas. O cartão mostra o pool compartilhado e as ações do líder; edição, remoção e invocação separada ficam bloqueadas enquanto a composição existir.
+- A dissipação da Horda continua bloqueada na interface e no controlador até definir como devolver o pool compartilhado às fichas individuais.
 - `controladorTempo.test.ts` cobre consumo proporcional e o piso de 10 segundos; os testes de resolução de derrota cobrem Mestre exclusivo, limiar de perda e recuperação integral após descanso longo.
 - `controladorHordas.test.ts` cobre limites, composição, cálculo de PV/custo e efeitos derivados da Horda.
 
 ## Pendências
 
 - Definir a duração e os efeitos da incapacitação, incluindo se a regra antiga de recuperação parcial e ação para levantar continua válida. A regra de duração não foi inventada; 0 PV materializa Caída por enquanto.
-- Integrar o cálculo à ficha, persistência e mapa: criar uma Horda como uma entidade/token, retirar os tokens dos membros, usar apenas as ações do líder, e respeitar aprovação, propriedade e limite de vagas.
-- Aplicar no fluxo de combate as regras calculadas: PV geral, contribuição temporal única, tamanho, terreno difícil/flanqueamento, Fragilizada por área e RD contra alvo único.
-- Implementar a perda de metade dos membros ao chegar a metade dos PV. O texto-base não esclarece o arredondamento com número ímpar de membros nem como ajustar o PV atual quando os PV máximos diminuem; não inventar esses detalhes.
+- Aplicar no fluxo de combate as regras calculadas: tamanho, terreno difícil/flanqueamento, Fragilizada por área e RD contra alvo único.
+- Implementar a perda de metade dos membros ao chegar a metade dos PV, removendo primeiro os de menor grau. O arredondamento para baixo está definido; ainda falta decidir como ajustar os PV atuais quando o máximo diminui e processar o caso em que o dano cruza o limiar.
 - Implementar a dissipação voluntária da Horda apenas no fim do combate e a redução pela metade dos PV máximos do líder caso ele forme outra Horda após uma dissipação durante o combate.
+- Definir como o pool geral de PV se relaciona com as fichas individuais quando a Horda se dissipa ou perde membros; até lá, dissipação e reinvocação da composição permanecem bloqueadas.
 - O texto-base limita o líder a Primeiro Grau ou inferior; o cálculo atual rejeita líder Especial. Só reabrir o custo de membro de Primeiro Grau sob líder Especial se o usuário autorizar essa exceção.
 
 ## Verificação
 
 - `npx vitest run src/test/controladorHordas.test.ts --reporter=dot`: **1 arquivo, 5 testes aprovados**.
-- `npx tsc --noEmit --pretty false`: aprovado.
-- `git diff --check` e verificação de espaços finais: limpos.
+- `npx vitest run src/test/controladorMapa.test.ts --reporter=dot`: **1 arquivo, 60 testes aprovados**, incluindo materialização única da Horda, custo, PV e contribuição temporal.
+- `npx tsc --noEmit --pretty false`: aprovado após os ajustes finais da interface.
+- `git diff --check`: limpo.
 - Os testes da fundação usam apenas o calculador puro; nenhuma chamada ao Supabase é necessária.

@@ -106,6 +106,7 @@ export function novaInstanciaInvocacao(input: {
   turnoCriacao?: number;
   rodadaCriacao?: number;
   contribuicaoTempo?: InstanciaInvocacao['contribuicaoTempo'];
+  composicaoHorda?: InstanciaInvocacao['composicaoHorda'];
   createdAt?: string;
 }): InstanciaInvocacao {
   return InstanciaInvocacaoSchema.parse({

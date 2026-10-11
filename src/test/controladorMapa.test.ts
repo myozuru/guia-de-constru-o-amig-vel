@@ -10,7 +10,7 @@ import { useTestRequestStore } from '@/stores/useTestRequestStore';
 import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
 import { useDice3DStore } from '@/stores/useDice3DStore';
 import type { EntidadeOmni } from '@/lib/omni/tipos';
-import { invocarControlador, invocarControladores, recolherInvocacao, tokensInvocados, limparInvocacoesDerrotadas, causarDanoInvocacao, curarInvocacao, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, expirarEfeitosSuporteInvocacoes, comandosPorAcao, confirmarMovimentoInvocacao, rolarPericiaInvocacao } from '@/lib/controlador/mapa';
+import { invocarControlador, invocarControladores, invocarHordaControlador, recolherInvocacao, tokensInvocados, limparInvocacoesDerrotadas, causarDanoInvocacao, curarInvocacao, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, expirarEfeitosSuporteInvocacoes, comandosPorAcao, confirmarMovimentoInvocacao, rolarPericiaInvocacao } from '@/lib/controlador/mapa';
 import type { InvocacaoControlador } from '@/lib/controlador/tipos';
 
 let numeroFixture = 0;
@@ -333,6 +333,45 @@ describe('Controlador — materialização real no mapa', () => {
     expect(tokens.map(token => [token.x, token.y])).toEqual([[210, 140], [140, 210]]);
     expect(tokens.every(token => token.invocationBatchId === 'lote-duplo')).toBe(true);
     expect(new Set(tokens.map(token => token.invocationInstanceId)).size).toBe(2);
+  });
+  it('materializa Horda como um token, soma PV/custo e registra uma única contribuição de tempo', () => {
+    const combateAntes = useCombatStore.getState();
+    useCombatStore.setState({ inCombat: false, combatId: null, turnTimerEnabled: false, turnPaused: true, reactionPauseIds: [], turnTimeGrantEventIds: [] } as never);
+    const dono = pegarFicha('dono');
+    useCharacterStore.getState().updateCharacter('dono', {
+      invocacoesConhecidas: (dono.invocacoesConhecidas ?? []).map(item => item.id === 'a'
+        ? { ...item, grau: 'primeiro' as const }
+        : item.id === 'b' ? { ...item, grau: 'quarto' as const } : item),
+    });
+    try {
+      const entrada = {
+        eventoId: 'evento-horda-integracao', liderId: 'a', membrosIds: ['b'],
+        tempoAdicional: { quantidade: 2, unidade: 'turnos' }, x: 210, y: 140,
+      };
+      const resultado = invocarHordaControlador('dono', entrada);
+      if (!resultado.ok) throw new Error(resultado.motivo);
+      const token = useMapStore.getState().entities[resultado.tokenId];
+      const instancia = pegarFicha('dono').instanciasInvocacao?.find(item => item.id === token.invocationInstanceId);
+      expect(tokensInvocados('dono')).toHaveLength(1);
+      expect(token).toMatchObject({
+        invocationId: 'a', invocationHordeMemberIds: ['b'], invocationHordeSizeIncreases: 0,
+        hp: 18, hpMax: 18, label: 'Horda de a',
+      });
+      expect(instancia).toMatchObject({
+        hpAtual: 18, hpMaximoAtual: 18,
+        composicaoHorda: { liderModeloId: 'a', custoInvocacaoPE: 4, membros: [{ modeloId: 'b', grau: 'quarto', pvAntes: 12, pvMaximoAntes: 12 }] },
+        contribuicaoTempo: { quantidadeConcedida: 12, quantidadeRestante: 12, grantEventId: entrada.eventoId },
+      });
+      expect(pegarFicha('dono').peCurrent).toBe(6);
+      expect(invocarControlador('dono', 'b', 'sul').ok).toBe(false);
+      expect(recolherInvocacao('dono', 'a')).toBe(false);
+
+      expect(invocarHordaControlador('dono', entrada)).toEqual(resultado);
+      expect(tokensInvocados('dono')).toHaveLength(1);
+      expect(pegarFicha('dono').peCurrent).toBe(6);
+    } finally {
+      useCombatStore.setState(combateAntes as never);
+    }
   });
   it('repete um lote com o mesmo ID sem recriar tokens nem cobrar PE de novo', () => {
     const posicoes = [

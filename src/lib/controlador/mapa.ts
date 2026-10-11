@@ -63,11 +63,22 @@ import {
   parseFormulaDanoInvocacao,
   resolverAcertoInvocacao,
 } from './rolagens';
+import { calcularHorda, validarLimiteHorda, type GrauHorda } from './hordas';
 
 export type DirecaoInvocacao = 'norte' | 'sul' | 'leste' | 'oeste';
 export type ResultadoInvocacao = { ok: true; tokenId: string } | { ok: false; motivo: string };
 export type PosicaoInvocacao = { invocacaoId: string; x: number; y: number };
 export type ResultadoLoteInvocacoes = { ok: true; tokenIds: string[] } | { ok: false; motivo: string };
+
+export interface EntradaCriacaoHorda {
+  eventoId?: string;
+  liderId: string;
+  membrosIds: readonly string[];
+  tempoAdicional: NonNullable<InvocacaoControlador['tempoAdicional']>;
+  x: number;
+  y: number;
+  motivosOverrideIntermediario?: Record<string, string>;
+}
 
 function novoIdInvocacao(prefixo: string): string {
   const valor = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -325,6 +336,14 @@ export function tokensInvocados(donoCharacterId: string) {
   return Object.values(useMapStore.getState().entities).filter(e => e.ownerCharId === donoCharacterId && !!e.invocationId);
 }
 
+function modeloVinculadoAHorda(personagem: Character, modeloId: string): boolean {
+  return (personagem.instanciasInvocacao ?? []).some(instancia => {
+    const composicao = instancia.composicaoHorda;
+    if (!composicao || instancia.estado === 'dissipada') return false;
+    return composicao.liderModeloId === modeloId || composicao.membros.some(membro => membro.modeloId === modeloId);
+  });
+}
+
 /** API legada de posicionamento adjacente; a interface atual usa invocarControladores. */
 export interface OpcoesInvocacaoControlador {
   motivoOverrideIntermediario?: string;
@@ -364,6 +383,7 @@ export function invocarControlador(
   }
   const modelo = dono.invocacoesConhecidas?.find(i => i.id === invocacaoId && i.donoCharacterId === donoId);
   if (!modelo) return { ok: false, motivo: 'Invocação não pertence ao catálogo.' };
+  if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: 'Esta invocação está vinculada a uma Horda e não pode ser invocada separadamente.' };
   if (modelo.perdaPermanente) return { ok: false, motivo: 'Esta invocação foi declarada como perda permanente.' };
   if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === invocacaoId && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
     return { ok: false, motivo: 'A derrota desta invocação aguarda decisão do Mestre.' };
@@ -497,6 +517,228 @@ export function invocarControlador(
   return { ok: true, tokenId };
 }
 
+/** Materializa uma Horda como uma única instância/token e acrescenta uma única contribuição temporal. */
+export function invocarHordaControlador(
+  donoId: string,
+  entrada: EntradaCriacaoHorda,
+): ResultadoInvocacao {
+  const dono = useCharacterStore.getState().characters.find(character => character.id === donoId);
+  if (!dono) return { ok: false, motivo: 'Personagem não encontrado.' };
+  if (dono.specialization !== 'Controlador') return { ok: false, motivo: 'Somente um Controlador pode criar Hordas.' };
+  if (entrada.eventoId !== undefined && !entrada.eventoId.trim()) return { ok: false, motivo: 'O ID do evento da Horda está vazio.' };
+  if (!entrada.liderId.trim() || entrada.membrosIds.length < 1) {
+    return { ok: false, motivo: 'Escolha um líder e pelo menos um membro para a Horda.' };
+  }
+  const eventoId = entrada.eventoId?.trim() || novoIdInvocacao('evento-horda');
+  const ids = [entrada.liderId, ...entrada.membrosIds];
+  if (new Set(ids).size !== ids.length) return { ok: false, motivo: 'O líder e os membros precisam ser invocações diferentes.' };
+
+  const mapa = useMapStore.getState();
+  const eventoExistente = Object.values(mapa.entities).find(entity => entity.invocationEventId === eventoId);
+  if (eventoExistente) {
+    const mesmosMembros = [...(eventoExistente.invocationHordeMemberIds ?? [])].sort().join('|') === [...entrada.membrosIds].sort().join('|');
+    if (eventoExistente.ownerCharId === donoId && eventoExistente.invocationHordeId &&
+      eventoExistente.invocationId === entrada.liderId && mesmosMembros) {
+      return { ok: true, tokenId: eventoExistente.id };
+    }
+    return { ok: false, motivo: 'Este ID de evento já pertence a outra materialização.' };
+  }
+  if (dono.instanciasInvocacao?.some(instancia => instancia.eventoCriacaoId === eventoId)) {
+    return { ok: false, motivo: 'Este evento já foi resolvido e não pode criar outra Horda.' };
+  }
+
+  const modelos = ids.map(id => dono.invocacoesConhecidas?.find(modelo => modelo.id === id && modelo.donoCharacterId === donoId));
+  if (modelos.some(modelo => !modelo)) return { ok: false, motivo: 'O líder e todos os membros precisam pertencer ao catálogo deste Controlador.' };
+  const modelosValidos = modelos as InvocacaoControlador[];
+  for (const modelo of modelosValidos) {
+    if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: `${modelo.nome} já está vinculada a outra Horda.` };
+    if (modelo.perdaPermanente) return { ok: false, motivo: `${modelo.nome} foi declarada como perda permanente.` };
+    if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === modelo.id && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
+      return { ok: false, motivo: `A derrota de ${modelo.nome} aguarda decisão do Mestre.` };
+    }
+    if (!podeUsarVersaoAprovada({ estado: modelo.aprovacaoMestre, versaoAtual: modelo.versaoModelo, versaoAprovada: modelo.versaoAprovada })) {
+      return { ok: false, motivo: `${modelo.nome} ainda não tem uma versão aprovada pelo Mestre.` };
+    }
+    if (tokensInvocados(donoId).some(token => token.invocationId === modelo.id)) {
+      return { ok: false, motivo: `${modelo.nome} já está materializada; recolha-a antes de formar a Horda.` };
+    }
+  }
+
+  const grausValidos: GrauHorda[] = ['quarto', 'terceiro', 'segundo', 'primeiro', 'especial'];
+  const componentes = modelosValidos.map(modelo => {
+    const grau = grausValidos.includes(modelo.grau as GrauHorda) ? modelo.grau as GrauHorda : undefined;
+    if (!grau) return undefined;
+    return {
+      id: modelo.id,
+      grau,
+      pvAtual: modelo.hpAtual,
+      pvMaximo: modelo.hpMaximo,
+      custoInvocacaoPE: modelo.custoInvocacaoPE,
+    };
+  });
+  if (componentes.some(componente => !componente)) return { ok: false, motivo: 'Defina o grau e os PV de todos os integrantes antes de formar a Horda.' };
+
+  const [liderModelo, ...membrosModelos] = modelosValidos;
+  const [liderComponente, ...membrosComponentes] = componentes as NonNullable<(typeof componentes)[number]>[];
+  const limite = limiteAtivasPersonagem(dono.specialization, dono.treinoControle ?? 0);
+  const hordaAtual = calcularHorda({
+    id: 'horda-preview',
+    lider: liderComponente,
+    membros: membrosComponentes,
+    nivelDono: dono.level,
+    maximoInvocacoesEmCampo: limite,
+    tempoAdicional: entrada.tempoAdicional,
+  });
+  if (!hordaAtual.ok) return { ok: false, motivo: hordaAtual.motivo };
+  const ativos = tokensInvocados(donoId);
+  const hordasAtivas = ativos.filter(token => Boolean(token.invocationHordeId)).length;
+  const limiteHordas = validarLimiteHorda({
+    limiteInvocacoesEmCampo: limite,
+    hordasAtivas,
+    invocacoesIndividuaisAposCriacao: ativos.length - hordasAtivas,
+  });
+  if (!limiteHordas.ok) return { ok: false, motivo: limiteHordas.motivo };
+  const tempoValidado = tempoAdicionalEmSegundos(entrada.tempoAdicional);
+  if (!tempoValidado.ok) return { ok: false, motivo: tempoValidado.motivo };
+
+  const motivosOverride: Array<{ modelo: InvocacaoControlador; motivo: string }> = [];
+  for (const modelo of modelosValidos) {
+    const validacao = validarIntermediarioInvocacao(modelo, dono, useInventoryStore.getState().items, dono.invocacoesConhecidas ?? []);
+    const motivo = entrada.motivosOverrideIntermediario?.[modelo.id]?.trim() ?? '';
+    if (!validacao.ok && !motivo) return { ok: false, motivo: `${modelo.nome}: ${validacao.motivo}` };
+    if (!validacao.ok && motivo && useRoleStore.getState().role !== 'MASTER') {
+      return { ok: false, motivo: 'Somente o Mestre pode ignorar a validação do intermediário.' };
+    }
+    if (!validacao.ok && motivo) motivosOverride.push({ modelo, motivo });
+    if (modelo.id === liderModelo.id && (!Number.isFinite(modelo.alcanceInvocacaoM) || (modelo.alcanceInvocacaoM ?? -1) < 0)) {
+      return { ok: false, motivo: `Defina o alcance de invocação na ficha ${modelo.nome}.` };
+    }
+  }
+
+  const origem = Object.values(mapa.entities).find(entity => entity.characterId === donoId && !entity.invocationId);
+  if (!origem) return { ok: false, motivo: 'Coloque o token do Controlador no mapa primeiro.' };
+  const passo = mapa.gridConfig.dpi;
+  const metrosPorCelula = mapa.gridConfig.metersPerCell;
+  if (!(passo > 0) || !(metrosPorCelula > 0)) return { ok: false, motivo: 'Grade do mapa inválida.' };
+  if (!Number.isFinite(entrada.x) || !Number.isFinite(entrada.y) ||
+    Math.abs(entrada.x / passo - Math.round(entrada.x / passo)) > 1e-6 ||
+    Math.abs(entrada.y / passo - Math.round(entrada.y / passo)) > 1e-6) {
+    return { ok: false, motivo: 'Escolha uma célula válida da grade para a Horda.' };
+  }
+  const distancia = Math.hypot(entrada.x - origem.x, entrada.y - origem.y) / passo * metrosPorCelula;
+  if (distancia > liderModelo.alcanceInvocacaoM!) return { ok: false, motivo: 'A posição da Horda está fora do alcance definido na ficha do líder.' };
+  const ocupado = Object.values(mapa.entities).some(entity => entity.layer !== 'map' && !entity.hidden &&
+    Math.abs(entity.x - entrada.x) < (entity.w + passo) / 2 && Math.abs(entity.y - entrada.y) < (entity.h + passo) / 2);
+  if (ocupado) return { ok: false, motivo: 'A célula escolhida para a Horda está ocupada.' };
+  const paredesAtivas = WallsEngine.blockingSegments(mapa.walls, 'sight');
+  if (WallsEngine.minDistanceToSegments({ x: entrada.x, y: entrada.y }, paredesAtivas) < passo * Math.SQRT1_2) {
+    return { ok: false, motivo: 'A célula escolhida para a Horda está bloqueada por uma parede ou obstáculo.' };
+  }
+
+  useCombatStore.getState().settleTurnTimer();
+  const donoAtual = useCharacterStore.getState().characters.find(character => character.id === donoId);
+  if (!donoAtual) return { ok: false, motivo: 'Personagem não encontrado.' };
+  const peAntes = Number.isFinite(donoAtual.peCurrent) ? donoAtual.peCurrent : 0;
+  if (peAntes < hordaAtual.horda.custoInvocacaoPE) return { ok: false, motivo: 'PE insuficiente para formar esta Horda.' };
+  const combate = useCombatStore.getState();
+  const instanciaId = novoIdInvocacao('instancia-horda');
+  const tokenId = novoIdInvocacao('token-horda');
+  const hordaId = novoIdInvocacao('horda');
+  const contribuicaoResult = criarContribuicaoTempoInvocacao({
+    grantEventId: eventoId,
+    ownerCharacterId: donoId,
+    ...(combate.inCombat && combate.combatId ? { combatId: combate.combatId } : {}),
+    instanceId: instanciaId,
+    invocationId: liderModelo.id,
+    tempoAdicional: entrada.tempoAdicional,
+  });
+  if (!contribuicaoResult.ok) return { ok: false, motivo: contribuicaoResult.motivo };
+  const contribuicaoTempo = contribuicaoResult.contribuicao;
+  const composicaoHorda = {
+    id: hordaId,
+    liderModeloId: liderModelo.id,
+    membros: membrosModelos.map((modelo, index) => ({
+      modeloId: modelo.id,
+      grau: membrosComponentes[index].grau,
+      pvAntes: modelo.hpAtual,
+      pvMaximoAntes: modelo.hpMaximo,
+    })),
+    tempoAdicional: entrada.tempoAdicional,
+    custoInvocacaoPE: hordaAtual.horda.custoInvocacaoPE,
+    categoriasTamanhoAdicionais: hordaAtual.horda.efeitos.categoriasTamanhoAdicionais,
+    usosAntesPrejuizoMultiplo: hordaAtual.horda.efeitos.usosAntesPrejuizoMultiplo,
+  };
+  const instancia = novaInstanciaInvocacao({
+    id: instanciaId,
+    modeloId: liderModelo.id,
+    donoCharacterId: donoId,
+    donoProfileId: dono.profileId || undefined,
+    tokenId,
+    eventoCriacaoId: eventoId,
+    hpAtual: hordaAtual.horda.pvAtual,
+    hpMaximoAtual: hordaAtual.horda.pvMaximo,
+    estado: hordaAtual.horda.pvAtual > 0 ? 'ativa' : 'caida',
+    economiaAcoes: economiaInicialInvocacao(liderModelo),
+    recursosAtuais: recursosInvocacaoIniciais(liderModelo),
+    ...(combate.inCombat && combate.combatId ? { combateId: combate.combatId } : {}),
+    ...(combate.inCombat ? { turnoCriacao: combate.currentTurnIndex, rodadaCriacao: combate.round } : {}),
+    ...(contribuicaoTempo ? { contribuicaoTempo } : {}),
+    composicaoHorda,
+  });
+  try {
+    mapa.addEntity({
+      id: tokenId,
+      shape: liderModelo.formaToken ?? 'ELLIPSE', x: entrada.x, y: entrada.y, w: passo, h: passo, rotation: 0,
+      color: liderModelo.corIdentificacao ?? '#8055bd',
+      label: `Horda de ${liderModelo.apelido?.trim() || liderModelo.nome}`,
+      locked: false, layer: 'tokens', nameplate: liderModelo.nomeplate ?? true,
+      ...(liderModelo.imagemAssetId ? { assetId: liderModelo.imagemAssetId } : liderModelo.imagemFallbackAssetId ? { assetId: liderModelo.imagemFallbackAssetId } : {}),
+      ...(liderModelo.imagemFallbackAssetId ? { invocationFallbackAssetId: liderModelo.imagemFallbackAssetId } : {}),
+      ...(liderModelo.tokenCrop ? { tokenCrop: liderModelo.tokenCrop as import('@/stores/useMapStore').TokenCrop } : {}),
+      hp: hordaAtual.horda.pvAtual, hpMax: hordaAtual.horda.pvMaximo,
+      ownerCharId: donoId, ownerProfileId: dono.profileId || undefined, invocationId: liderModelo.id,
+      invocationEventId: eventoId, invocationInstanceId: instanciaId,
+      invocationState: instancia.estado,
+      invocationDefense: liderModelo.defesa, invocationMovementM: liderModelo.deslocamentoM,
+      invocationHordeId: hordaId,
+      invocationHordeMemberIds: [...entrada.membrosIds],
+      invocationHordeSizeIncreases: hordaAtual.horda.efeitos.categoriasTamanhoAdicionais,
+    });
+    useCharacterStore.getState().updateCharacter(donoId, {
+      peCurrent: peAntes - hordaAtual.horda.custoInvocacaoPE,
+      instanciasInvocacao: [...(donoAtual.instanciasInvocacao ?? []), instancia],
+    });
+  } catch {
+    try { if (useMapStore.getState().entities[tokenId]) useMapStore.getState().removeEntities([tokenId]); } catch { /* rollback best-effort */ }
+    try {
+      const atual = useCharacterStore.getState().characters.find(character => character.id === donoId);
+      if (atual && atual.peCurrent === peAntes - hordaAtual.horda.custoInvocacaoPE) {
+        useCharacterStore.getState().updateCharacter(donoId, { peCurrent: peAntes, instanciasInvocacao: donoAtual.instanciasInvocacao });
+      }
+    } catch { /* rollback best-effort */ }
+    return { ok: false, motivo: 'Não foi possível concluir a Horda; os efeitos locais foram desfeitos.' };
+  }
+  if (contribuicaoTempo) {
+    const segundosAplicados = useCombatStore.getState().registerInvocationTimeGrant(
+      donoId,
+      contribuicaoTempo.grantEventId,
+      contribuicaoTempo.quantidadeConcedida,
+    );
+    try {
+      useLogStore.getState().addLog(
+        'combat',
+        `⏱️ Horda de ${liderModelo.apelido?.trim() || liderModelo.nome}: +${formatarSegundosTempoInvocacao(contribuicaoTempo.quantidadeConcedida)} s ao relógio global.`,
+        segundosAplicados > 0 ? 'Uma única contribuição temporal foi registrada para a Horda.' : 'Uma única contribuição temporal foi registrada para a Horda, para o próximo turno do dono.',
+      );
+    } catch { /* o log não desfaz a Horda */ }
+  }
+  for (const { modelo, motivo } of motivosOverride) {
+    useLogStore.getState().addLog('system', `Override do Mestre: ${dono.name} criou uma Horda com ${modelo.nome}. Motivo: ${motivo}`,
+      `O Mestre autorizou a exceção do intermediário para ${modelo.nome} nesta Horda.`);
+  }
+  return { ok: true, tokenId };
+}
+
 /** Invocar é Ação Livre por enquanto; valida e materializa uma ou duas fichas em uma transação local idempotente. */
 export function invocarControladores(
   donoId: string,
@@ -551,6 +793,7 @@ export function invocarControladores(
   const modelosValidos = modelos as InvocacaoControlador[];
   const validacoesOverride: Array<{ modelo: InvocacaoControlador; motivo: string; override: boolean }> = [];
   for (const modelo of modelosValidos) {
+    if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: `${modelo.nome} já está vinculada a uma Horda.` };
     if (modelo.perdaPermanente) return { ok: false, motivo: 'A invocação ' + modelo.nome + ' foi declarada como perda permanente.' };
     if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === modelo.id && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
       return { ok: false, motivo: 'A derrota de ' + modelo.nome + ' aguarda decisão do Mestre.' };
@@ -720,6 +963,8 @@ export function recolherInvocacao(donoId: string, invocacaoId: string): boolean 
   const tokens = Object.values(mapa.entities).filter(e => e.ownerCharId === donoId && e.invocationId === invocacaoId);
   if (!tokens.length) return false;
   const token = tokens[0];
+  // Não descartar o único pool de PV sem a regra de retorno dos integrantes.
+  if (token.invocationHordeId) return false;
   const modelo = obterModeloDoToken(dono, token);
   if (!modelo) return false;
   const instancia = obterInstanciaDoToken(dono, token, modelo);

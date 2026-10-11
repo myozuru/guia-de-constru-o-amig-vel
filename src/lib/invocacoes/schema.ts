@@ -366,6 +366,35 @@ export const ContribuicaoTempoInvocacaoSchema = z.object({
 });
 export type ContribuicaoTempoInvocacao = z.infer<typeof ContribuicaoTempoInvocacaoSchema>;
 
+/** Componentes preservados de uma Horda. O PV efetivo vive uma vez só na instância. */
+export const ComponenteHordaInvocacaoSchema = z.object({
+  modeloId: idSchema,
+  grau: z.enum(["quarto", "terceiro", "segundo", "primeiro", "especial"]),
+  pvAntes: finiteNumberSchema,
+  pvMaximoAntes: finiteNumberSchema.min(1),
+}).strict().superRefine((componente, ctx) => {
+  if (componente.pvAntes < 0 || componente.pvAntes > componente.pvMaximoAntes) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pvAntes"], message: "PV registrado do integrante está fora do intervalo válido." });
+  }
+});
+export type ComponenteHordaInvocacao = z.infer<typeof ComponenteHordaInvocacaoSchema>;
+
+export const ComposicaoHordaInvocacaoSchema = z.object({
+  id: idSchema,
+  liderModeloId: idSchema,
+  membros: z.array(ComponenteHordaInvocacaoSchema).min(1).max(100),
+  tempoAdicional: ConfiguracaoTempoInvocacaoSchema,
+  custoInvocacaoPE: nonNegativeNumberSchema,
+  categoriasTamanhoAdicionais: nonNegativeIntSchema,
+  usosAntesPrejuizoMultiplo: nonNegativeIntSchema,
+}).strict().superRefine((horda, ctx) => {
+  const ids = [horda.liderModeloId, ...horda.membros.map(membro => membro.modeloId)];
+  if (new Set(ids).size !== ids.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["membros"], message: "A composição da Horda não pode repetir o líder ou integrantes." });
+  }
+});
+export type ComposicaoHordaInvocacao = z.infer<typeof ComposicaoHordaInvocacaoSchema>;
+
 export const ResolucaoDerrotaInvocacaoSchema = z.discriminatedUnion("resultado", [
   z.object({
     resultado: z.literal("recuperada"),
@@ -398,6 +427,8 @@ export const InstanciaInvocacaoSchema = z.object({
   hpMaximoAtual: finiteNumberSchema.min(1),
   /** Camada de Pontos de Vida Temporários absorvida antes dos PV. */
   pvTemporarios: nonNegativeNumberSchema.optional(),
+  /** Composição congelada da Horda; hpAtual/hpMaximoAtual são o único pool de PV. */
+  composicaoHorda: ComposicaoHordaInvocacaoSchema.optional(),
   efeitosSuporteAtivos: z.array(EfeitoSuporteAtivoInvocacaoSchema).max(100).optional(),
   condicoes: z.array(z.unknown()).optional(),
   economiaAcoes: EconomiaInstanciaSchema.optional(),
