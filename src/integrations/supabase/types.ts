@@ -117,6 +117,14 @@ export type Database = {
         }
         Returns: Json
       }
+      write_owned_map_scene: {
+        Args: {
+          p_expected_revision: number
+          p_map_scene: Json
+          p_request_id: string
+        }
+        Returns: Json
+      }
       set_master: {
         Args: { _make: boolean; _target: string }
         Returns: undefined

@@ -25,6 +25,11 @@ const saveCharactersInputSchema = z.object({
   expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   characters: z.array(z.record(z.string(), z.unknown())).max(1000),
 }).strict();
+const saveMapSceneInputSchema = z.object({
+  requestId: z.string().uuid(),
+  expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  mapScene: z.record(z.string(), z.unknown()),
+}).strict();
 
 type AuthContext = {
   userId: string;
@@ -159,6 +164,39 @@ export const saveCharactersSliceSecurely = createServerFn({ method: "POST" })
       revision: saved.revision,
       data: saved.data,
       duplicate: saved.duplicate,
+    };
+  });
+
+/** Persiste o mapa; a RPC deriva papel e propriedade da sessão autenticada. */
+export const saveMapSceneSliceSecurely = createServerFn({ method: "POST" })
+  .middleware([forwardSupabaseFunctionAuth, requireSupabaseAuth])
+  .validator((input: unknown) => saveMapSceneInputSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("write_owned_map_scene", {
+      p_request_id: data.requestId,
+      p_expected_revision: data.expectedRevision,
+      p_map_scene: data.mapScene as import("@/integrations/supabase/types").Json,
+    });
+    if (error) {
+      if (error.code === "40001") return { ok: false as const, code: "stale" as const, message: "O mapa mudou; sincronize novamente." };
+      if (error.code === "42501") return { ok: false as const, code: "forbidden" as const, message: "A conta não pode alterar essa parte do mapa." };
+      if (error.code === "22023") return { ok: false as const, code: "invalid" as const, message: "A solicitação de mapa é inválida." };
+      return { ok: false as const, code: "failed" as const, message: "Não foi possível salvar o mapa com segurança." };
+    }
+    const saved = result as {
+      revision: number;
+      data: import("@/integrations/supabase/types").Json;
+      duplicate: boolean;
+      changed: boolean;
+      role: "master" | "player";
+    };
+    return {
+      ok: true as const,
+      revision: saved.revision,
+      data: saved.data,
+      duplicate: saved.duplicate,
+      changed: saved.changed,
+      role: saved.role,
     };
   });
 

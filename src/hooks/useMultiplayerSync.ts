@@ -8,7 +8,7 @@ import { comPreviaMovimento, receberMovimentoConfirmado, previaDepoisDaConfirmac
 import { mergeInventory } from '@/lib/omni/inventorySync';
 import { useInventoryStore } from '@/stores/useInventoryStore';
 import { mergeIncomingCharacters, pickNewestPerCharacter, stampLocalChanges, withStamps } from '@/lib/charSyncStamps';
-import { saveCharactersSliceSecurely } from '@/lib/combat/actionRequests.functions';
+import { saveCharactersSliceSecurely, saveMapSceneSliceSecurely } from '@/lib/combat/actionRequests.functions';
 import { mergeSyncedProfiles, projectProfilesForSync } from '@/lib/profileSync';
 import { projectBossesForPlayers } from '@/lib/bosses';
 import { useEffect } from 'react';
@@ -163,12 +163,37 @@ function base64ToBlob(base64: string, mime?: string): Blob {
 }
 
 async function publishMapSceneToCloud(map: MapSceneSync) {
-  rememberPublishedMap(JSON.stringify(map));
-  const { error } = await supabase.from('realtime_world').upsert({
-    slice: 'mapScene',
-    data: JSON.parse(JSON.stringify(map)) as Json,
-  });
-  if (error) console.warn('[sync] falha ao publicar mapa no Cloud:', error.message);
+  if (!hasWorkspaceCloud) return;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data: row, error: readError } = await supabase
+      .from('realtime_world')
+      .select('revision')
+      .eq('slice', 'mapScene')
+      .maybeSingle();
+    if (readError) {
+      console.warn('[sync] falha ao ler a revisão do mapa:', readError.message);
+      return;
+    }
+    const result = await saveMapSceneSliceSecurely({
+      data: {
+        requestId: crypto.randomUUID(),
+        expectedRevision: row?.revision ?? 0,
+        mapScene: JSON.parse(JSON.stringify(map)) as Record<string, unknown>,
+      },
+    }) as unknown as
+      | { ok: true; revision: number; data: Json; duplicate: boolean; changed: boolean; role: 'master' | 'player' }
+      | { ok: false; code: string; message: string };
+    if (!result.ok) {
+      if (result.code === 'stale' && attempt === 0) continue;
+      console.warn('[sync] gravação segura do mapa recusada:', result.message);
+      return;
+    }
+    const savedMap = result.data as unknown as MapSceneSync;
+    rememberPublishedMap(JSON.stringify(savedMap));
+    const localMap = pickMapScene();
+    if (isMapSceneSync(savedMap) && !sameMapScene(savedMap, localMap)) applyRemote('mapScene', savedMap);
+    return;
+  }
 }
 
 async function publishMapAssetToCloud(id: string, blob: Blob, mime?: string) {
@@ -613,6 +638,8 @@ export function useMultiplayerSync() {
       if (!p || p.clientId === clientId || !p.slice || p.slice === 'worldBossesMaster') return;
       // Personagens só chegam pelo Postgres depois da RPC validar a gravação.
       if (hasWorkspaceCloud && p.slice === 'characters') return;
+      // O mapa em nuvem só é aplicado a partir da RPC e do Postgres Changes.
+      if (hasWorkspaceCloud && p.slice === 'mapScene') return;
       // Em nuvem, fatias administrativas chegam pelo Postgres, onde RLS
       // valida quem gravou. Um broadcast aberto não autentica o emissor.
       if (hasWorkspaceCloud && isMasterControlledWorldSlice(p.slice)) return;
@@ -812,6 +839,7 @@ export function useMultiplayerSync() {
     // Patches incrementais de entidade (drag/resize/rotate em tempo real,
     // estilo Owlbear token_positions). Aplica direto sem reserializar o mapa.
     worldBus.on('broadcast', { event: 'entity-patch' }, ({ payload }) => {
+      if (hasWorkspaceCloud) return;
       const p = payload as { clientId?: string; patches?: Array<{ id: string; patch: Record<string, unknown>; at?: number }>; movimentoOmni?: MovimentoConfirmadoMapa; at?: number } | null;
       if (!p || p.clientId === clientId || !Array.isArray(p.patches)) return;
       const protectedIds = getProtectedRemoteEntityPatchIds();
@@ -824,6 +852,7 @@ export function useMultiplayerSync() {
       } else applySmoothedEntityPatches(patches.filter(patch => !('x' in patch.patch || 'y' in patch.patch) || previaDepoisDaConfirmacao(useMapStore.getState().entities[patch.id] ?? {}, patch.at ?? p.at)));
     });
     const onEntityPatch = (payload: { clientId?: string; patches?: Array<{ id: string; patch: Record<string, unknown>; at?: number }>; movimentoOmni?: MovimentoConfirmadoMapa; at?: number } | null) => {
+      if (hasWorkspaceCloud) return;
       if (!payload || payload.clientId === clientId || !Array.isArray(payload.patches)) return;
       const protectedIds = getProtectedRemoteEntityPatchIds();
       const patches = protectedIds ? payload.patches.filter((patch) => !protectedIds.has(patch.id)) : payload.patches;
@@ -836,7 +865,14 @@ export function useMultiplayerSync() {
     };
     void worldBus.subscribe();
     // expõe para o MapaModule emitir pings/cursor remotos
-    (window as unknown as { __worldBus?: unknown; __worldBusClientId?: string }).__worldBus = worldBus;
+    const guardedWorldBus = {
+      send(message: unknown) {
+        if (hasWorkspaceCloud && message && typeof message === 'object' &&
+            (message as { event?: unknown }).event === 'entity-patch') return Promise.resolve('ignored');
+        return worldBus.send(message as never);
+      },
+    };
+    (window as unknown as { __worldBus?: unknown; __worldBusClientId?: string }).__worldBus = guardedWorldBus;
     (window as unknown as { __worldBusClientId?: string }).__worldBusClientId = clientId;
 
     // Monkey-patch do socket.emit: cada state:update vai também via broadcast.
@@ -912,9 +948,11 @@ export function useMultiplayerSync() {
       }, 400));
     };
     (socket as unknown as { emit: typeof socket.emit }).emit = ((event: string, ...args: unknown[]) => {
+      if (hasWorkspaceCloud && event === 'entity:patch') return socket;
       if (event === 'state:update' && args[0] && typeof args[0] === 'object') {
         const a = args[0] as { slice?: WorldSlice; data?: unknown };
         if (a.slice === 'worldBossesMaster') return socket;
+        if (hasWorkspaceCloud && a.slice === 'mapScene') return socket;
         if (a.slice) {
           if (hasWorkspaceCloud && !podePublicarWorldSlice(useRoleStore.getState().role, a.slice)) return socket;
           if (hasWorkspaceCloud && a.slice === 'characters') {
@@ -1086,7 +1124,7 @@ export function useMultiplayerSync() {
       applyRemote('omniSpatial', mergedOmniSp);
 
       const shouldPublishLocalMap = hasMapContent(preLocal.mapScene) && !isMapSceneSync(world.mapScene);
-      if (isMapSceneSync(world.mapScene) && !shouldPublishLocalMap) applyRemote('mapScene', world.mapScene);
+      if (!hasWorkspaceCloud && isMapSceneSync(world.mapScene) && !shouldPublishLocalMap) applyRemote('mapScene', world.mapScene);
 
       // Money: se o local tem conteúdo, prevalece; senão usa remoto.
       const moneyLocalHasContent =
@@ -1124,6 +1162,7 @@ export function useMultiplayerSync() {
     const onUpdate = ({ slice, data }: { slice: WorldSlice; data: unknown }) => {
       if (slice === 'worldBossesMaster') return;
       if (hasWorkspaceCloud && slice === 'characters') return;
+      if (hasWorkspaceCloud && slice === 'mapScene') return;
       if (hasWorkspaceCloud && isMasterControlledWorldSlice(slice)) return;
       applyRemote(slice, data);
     };
@@ -1507,7 +1546,7 @@ export function useMultiplayerSync() {
           id === next.activeSceneId || JSON.stringify(next.scenes[id]) === JSON.stringify(prevObj.scenes[id]));
         if (otherScenesSame) {
           rememberLivePos();
-          if (patches.length) {
+          if (patches.length && !hasWorkspaceCloud) {
             markLocalEntityEdits(patches.map((p) => p.id));
             void worldBus.send({ type: 'broadcast', event: 'entity-patch', payload: { clientId, patches, at: Date.now() } });
           }

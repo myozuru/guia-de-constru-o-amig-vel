@@ -21,11 +21,11 @@
   autenticada.
 - `supabase/migrations/20261009010000_restrict_master_world_slices.sql`
   restringe no banco as fatias `worldBosses`, `worldBossesMaster`, `worldMap`,
-  `chronos` e `omniEntidades`. A fatia `mapScene` continua aceitando gravações
-  de qualquer conta autenticada; ela reúne tokens e elementos do mapa.
-- A migração `20261011010000_secure_character_slice_writes.sql` preparada nesta
-  etapa bloqueia gravações diretas de `characters`; sua aplicação ao projeto
-  Supabase ainda não foi verificada.
+  `chronos` e `omniEntidades`.
+- As migrações `20261011010000_secure_character_slice_writes.sql` e
+  `20261011020000_secure_map_scene_writes.sql` bloqueiam gravações diretas de
+  `characters` e `mapScene`; ainda precisam ser aplicadas e verificadas no
+  projeto Supabase.
 - `src/hooks/useMultiplayerSync.ts` consulta
   `podePublicarWorldSlice(useRoleStore.getState().role, slice)` antes de
   publicar certas fatias. Essa checagem ocorre no cliente e não substitui a
@@ -33,8 +33,8 @@
 - `src/lib/controlador/aprovacao.functions.ts` valida identidade, papel,
   propriedade e revisão por Server Functions autenticadas.
 - `src/lib/combat/actionRequests.functions.ts` valida o vínculo persistido em
-  `combat_character_owners` ao receber uma intenção e agora encaminha a escrita
-  autenticada de `characters`. A gravação de `mapScene` segue em outro caminho.
+  `combat_character_owners` ao receber uma intenção e agora encaminha as
+  gravações autenticadas de `characters` e `mapScene`.
 - `src/test/worldSliceAuthorization.test.ts` e
   `src/test/combatActionProtocol.test.ts` cobrem regras puras; não exercitam
   políticas RLS nem a sincronização real.
@@ -43,13 +43,37 @@
 
 **Severidade:** alta. Antes do incremento desta rodada, uma conta autenticada
 podia enviar gravações diretas das fichas e do mapa, inclusive alterando dados
-de personagens e tokens alheios. A fatia `characters` agora tem um caminho
-transacional preparado; `mapScene` continua sem validação por proprietário.
+de personagens e tokens alheios. As duas fatias agora têm caminhos
+transacionais preparados com validação de propriedade.
 
 Não é seguro resolver o achado apenas bloqueando essas fatias para jogadores:
 eles precisam sincronizar alterações próprias e controlar suas invocações. A
-correção precisa validar dono, entidade, operação, versão e idempotência antes
-de restringir cada caminho direto.
+proteção continua parcial até validar no banco os fluxos reais e cobrir as
+operações de criação/recolhimento de tokens e alteração de assets.
+
+## Mitigação S19-04 — mapa com escrita autenticada
+
+`write_owned_map_scene` usa `auth.uid()` e `has_role` no banco, recebe um
+`requestId` e serializa as gravações da cena. O Mestre grava a cena completa
+com revisão otimista; o jogador não inicializa nem altera a estrutura da cena.
+Para jogadores, o banco mescla somente `x` e `y` de tokens já existentes,
+desbloqueados e cujo `ownerCharId` ou `characterId` está vinculado à conta em
+`combat_character_owners`. O restante do snapshot enviado é ignorado. A
+resposta devolve o mapa efetivo para corrigir o estado local.
+
+A política RLS bloqueia `INSERT`/`UPDATE` diretos em `mapScene`. No modo Cloud,
+os broadcasts de mapa e os patches incrementais abertos deixam de ser enviados
+ou aplicados; posições são persistidas pela RPC após a janela de salvamento e
+chegam aos clientes pelo Postgres Changes. Isso aumenta a latência visível do
+movimento no modo Cloud para até cerca de 1,5 s. A trajetória ao vivo não é
+replicada nesta versão, então gatilhos que dependem do percurso ainda precisam
+de um transporte autenticado próprio.
+
+O incremento ainda não autoriza jogadores a criar/remover tokens de invocação
+nem altera assets de mapa. O Mestre continua responsável por alterações
+estruturais, incluindo inserir/recolher tokens; a gravação em `realtime_assets`
+continua fora desta mitigação. As migrações precisam ser aplicadas e validadas
+no Supabase antes de considerar o fluxo protegido em produção.
 
 ## Mitigação S19-03 — fatia `characters` com CAS no banco
 
@@ -70,11 +94,10 @@ cliente chama uma Server Function autenticada, não publica personagens em
 broadcast aberto e aplica atualizações recebidas pelo canal Postgres Changes.
 Em conflito de revisão, busca o estado atual e tenta mesclar uma vez.
 
-Esta mitigação não valida as regras de cada operação de combate no servidor e
-não protege `mapScene`, que ainda contém tokens e aceita gravação direta. A
-transição de PV/economia das instâncias também continua dependendo da lógica
-do cliente. A etapa permanece aberta até esses fluxos e o mapa terem caminhos
-autoritativos e ser possível verificar a migração no banco de destino.
+Esta mitigação não valida as regras de cada operação de combate no servidor.
+A transição de PV/economia das instâncias também continua dependendo da lógica
+do cliente. A etapa permanece aberta até esses fluxos terem caminhos
+autoritativos e ser possível verificar as migrações no banco de destino.
 
 ## Mitigação S19-02 — mesclagem concorrente de instâncias
 
@@ -122,17 +145,17 @@ Essas verificações foram executadas localmente, offline e sem Supabase.
 
 ## Próximo incremento
 
-Implementar a escrita autenticada de `mapScene`, validando proprietário do
-token, entidade/operação, revisão e `requestId` sem bloquear movimento legítimo
-de personagens e Shikigami. Em seguida, restringir a escrita direta e validar
-a migração no ambiente Supabase.
+Completar a autorização de criação/recolhimento de tokens e a proteção dos
+assets do mapa; depois aplicar e testar as duas migrações em uma mesa de
+homologação com contas separadas de Mestre e Jogador.
 
 ## Estado das etapas
 
 - Etapa 18: parcialmente concluída; recuperação manual foi publicada, mas
   reinvocação e Hordas ainda aguardam regras pendentes.
-- Etapa 19: parcial; a rota segura e a política RLS de `characters` foram
-  preparadas; `mapScene` e a validação no banco continuam pendentes.
+- Etapa 19: parcial; as rotas seguras e políticas RLS de `characters` e
+  `mapScene` foram preparadas; criação/recolhimento de tokens, assets e
+  validação no banco continuam pendentes.
 - Etapa 20: pendente.
 
 Assim, há **3 etapas numéricas abertas** (18, 19 e 20); a etapa 18 permanece
