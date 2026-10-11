@@ -243,7 +243,7 @@ interface CombatStore {
   turnDurationSec: number;
   /** Quanto tempo (s) restava no momento em que `turnStartedAt` foi setado. */
   turnRemainingAtStart: number;
-  /** Parte não consumida do tempo-base; o excedente é atribuído às reservas FIFO. */
+  /** Parte não consumida do tempo-base dentro do relógio global compartilhado. */
   turnBaseRemainingAtStart: number;
   /** Personagem dono do relógio corrente, distinto do dono das reservas futuras. */
   turnClockOwnerCharId: string | null;
@@ -288,7 +288,7 @@ interface CombatStore {
   resetTurnTimer: () => void;
   /** Retorna o tempo restante computado agora. */
   getTurnRemaining: () => number;
-  /** Assenta o tempo decorrido no tempo-base e nas reservas individuais FIFO. */
+  /** Assenta o tempo decorrido proporcionalmente no relógio global e suas contribuições. */
   settleTurnTimer: () => void;
   /** Registra um grant idempotente após a contribuição ser salva na instância. */
   registerInvocationTimeGrant: (ownerCharId: string, grantEventId: string, seconds: number) => number;
@@ -324,15 +324,13 @@ export function migrarEstadoCombatPersistido(persistedState: unknown, version: n
 
 function reservasTempoDoDono(ownerCharId: string, combatId: string | null | undefined) {
   const character = useCharacterStore.getState().characters.find(item => item.id === ownerCharId);
-  if (!character) return [] as Array<{ instancia: InstanciaInvocacao; createdAt: string; segundos: number }>;
+  if (!character) return [] as Array<{ instancia: InstanciaInvocacao; segundos: number }>;
   return (character.instanciasInvocacao ?? [])
     .filter(instancia => reservaTempoAtivaNoCombate(instancia.contribuicaoTempo, combatId))
     .map(instancia => ({
       instancia,
-      createdAt: instancia.contribuicaoTempo!.createdAt ?? '',
       segundos: instancia.contribuicaoTempo!.quantidadeRestante,
-    }))
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.instancia.id.localeCompare(b.instancia.id));
+    }));
 }
 
 function totalReservasTempoDoDono(ownerCharId: string | null | undefined, combatId: string | null | undefined): number {
@@ -341,20 +339,21 @@ function totalReservasTempoDoDono(ownerCharId: string | null | undefined, combat
 }
 
 function consumirReservasTempoDoDono(ownerCharId: string, combatId: string | null | undefined, segundos: number, agora: number): void {
-  let faltam = Math.max(0, segundos);
-  if (faltam <= 0) return;
+  const consumir = Math.max(0, segundos);
+  if (consumir <= 0) return;
   const character = useCharacterStore.getState().characters.find(item => item.id === ownerCharId);
   if (!character?.instanciasInvocacao?.length) return;
   const instante = new Date(agora).toISOString();
   let alterou = false;
   const reservas = reservasTempoDoDono(ownerCharId, combatId);
+  const totalReservas = reservas.reduce((total, item) => total + item.segundos, 0);
+  if (totalReservas <= 0) return;
+  const proporcaoConsumida = Math.min(1, consumir / totalReservas);
   const novasPorId = new Map<string, InstanciaInvocacao>();
-  for (const { instancia } of reservas) {
-    if (faltam <= 1e-9) break;
+  for (const { instancia, segundos } of reservas) {
     const contribuicao = instancia.contribuicaoTempo!;
-    const consumido = Math.min(faltam, contribuicao.quantidadeRestante);
+    const consumido = Math.min(contribuicao.quantidadeRestante, segundos * proporcaoConsumida);
     const quantidadeRestante = Math.max(0, contribuicao.quantidadeRestante - consumido);
-    faltam = Math.max(0, faltam - consumido);
     alterou = true;
     novasPorId.set(instancia.id, {
       ...instancia,
@@ -537,9 +536,11 @@ export const useCombatStore = create<CombatStore>()(
           total += deltaSec;
         } else {
           const requested = Math.min(total, -deltaSec);
-          const fromBase = Math.min(base, requested);
-          const fromReservations = requested - fromBase;
-          base = Math.max(0, base - fromBase);
+          const ownerCharId = s.turnClockOwnerCharId ?? activeTurnOwner(s);
+          const reservasRestantes = ownerCharId ? totalReservasTempoDoDono(ownerCharId, s.combatId) : 0;
+          const alocacao = consumoPorTempoDecorrido({ baseRestante: base, reservasRestantes, segundosDecorridos: requested });
+          const fromReservations = alocacao.consumirReservas;
+          base = alocacao.baseRestante;
           total = Math.max(0, total - requested);
           if (fromReservations > 0 && ownerCharId) {
             consumirReservasTempoDoDono(ownerCharId, s.combatId, fromReservations, Date.now());
@@ -574,11 +575,13 @@ export const useCombatStore = create<CombatStore>()(
         const agora = Date.now();
         const ativo = s.turnTimerEnabled && !s.turnPaused && s.reactionPauseIds.length === 0;
         const decorrido = ativo ? Math.max(0, (agora - s.turnStartedAt) / 1000) : 0;
+        const ownerCharId = s.turnClockOwnerCharId ?? activeTurnOwner(s);
+        const reservasRestantes = ownerCharId ? totalReservasTempoDoDono(ownerCharId, s.combatId) : 0;
         const alocacao = consumoPorTempoDecorrido({
           baseRestante: s.turnBaseRemainingAtStart,
+          reservasRestantes,
           segundosDecorridos: decorrido,
         });
-        const ownerCharId = s.turnClockOwnerCharId ?? activeTurnOwner(s);
         if (alocacao.consumirReservas > 0 && ownerCharId) {
           consumirReservasTempoDoDono(ownerCharId, s.combatId, alocacao.consumirReservas, agora);
         }
@@ -641,8 +644,11 @@ export const useCombatStore = create<CombatStore>()(
         };
         useCharacterStore.getState().updateCharacter(ownerCharId, { instanciasInvocacao: instancias });
         const clockAfter = ownerClockIsCurrent ? Math.max(0, clockBefore - removable) : clockBefore;
-        if (ownerClockIsCurrent && removable > 0) {
-          set({ turnRemainingAtStart: clockAfter, turnStartedAt: now });
+        if (ownerClockIsCurrent) {
+          const reservasRestantes = totalReservasTempoDoDono(ownerCharId, s.combatId);
+          // Se o piso preservou parte da contribuição, essa sobra passa a integrar o tempo-base.
+          const baseRestante = Math.max(s.turnBaseRemainingAtStart, clockAfter - reservasRestantes);
+          set({ turnBaseRemainingAtStart: baseRestante, turnRemainingAtStart: clockAfter, turnStartedAt: now });
         }
         return { removedSeconds: removable, discardedSeconds, clockBefore, clockAfter, appliedToCurrentClock: ownerClockIsCurrent };
       },

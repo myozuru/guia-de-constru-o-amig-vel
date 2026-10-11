@@ -571,23 +571,45 @@ describe('Controlador — materialização real no mapa', () => {
     expect(pegarFicha('dono').instanciasInvocacao?.[0]).toMatchObject({ estado: 'derrotada', hpAtual: -12 });
     expect(pegarFicha('dono').invocacoesConhecidas).toHaveLength(3);
   });
-  it('permite ao dono registrar a recuperação com PV escolhidos e preserva a derrota original', () => {
+  it('só o Mestre resolve a derrota; a recuperação restaura 100% no descanso longo e preserva o histórico', async () => {
     const invocada = invocarControlador('dono', 'a', 'leste');
     if (!invocada.ok) throw new Error(invocada.motivo);
     causarDanoInvocacao(invocada.tokenId, 24);
 
-    expect(resolverDerrotaPendenteInvocacao('dono', 'a', { resultado: 'recuperada', pvRecuperados: 5 }, {
+    expect(resolverDerrotaPendenteInvocacao('dono', 'a', { resultado: 'recuperada' }, {
       isMaster: false, profileId: 'perfil-alheio',
     })).toMatchObject({ ok: false });
-    expect(resolverDerrotaPendenteInvocacao('dono', 'a', { resultado: 'recuperada', pvRecuperados: 5 }, {
+    expect(resolverDerrotaPendenteInvocacao('dono', 'a', { resultado: 'recuperada' }, {
       isMaster: false, profileId: 'perfil-dono',
+    })).toMatchObject({ ok: false, motivo: 'Somente o Mestre pode resolver a derrota de uma invocação.' });
+    expect(resolverDerrotaPendenteInvocacao('dono', 'a', { resultado: 'recuperada' }, {
+      isMaster: true, profileId: 'perfil-mestre',
     })).toEqual({ ok: true });
 
-    expect(pegarFicha('dono').invocacoesConhecidas?.find(item => item.id === 'a')?.hpAtual).toBe(5);
+    expect(pegarFicha('dono').invocacoesConhecidas?.find(item => item.id === 'a')?.hpAtual).toBe(0);
+    const reInvocada = invocarControlador('dono', 'a', 'leste');
+    expect(reInvocada.ok).toBe(true);
+    if (!reInvocada.ok) throw new Error(reInvocada.motivo);
+    expect(useMapStore.getState().entities[reInvocada.tokenId]).toMatchObject({ hp: 0, invocationState: 'caida' });
+
+    await useCharacterStore.getState().applyLongRest('dono');
+
+    expect(pegarFicha('dono').invocacoesConhecidas?.find(item => item.id === 'a')?.hpAtual).toBe(12);
+    expect(useMapStore.getState().entities[reInvocada.tokenId]).toMatchObject({ hp: 12, invocationState: 'ativa' });
     expect(pegarFicha('dono').instanciasInvocacao?.[0]).toMatchObject({
-      estado: 'dissipada', hpAtual: 5,
-      resolucaoDerrota: { resultado: 'recuperada', pvNaDerrota: -12, pvRecuperados: 5 },
+      estado: 'dissipada', hpAtual: 0,
+      resolucaoDerrota: { resultado: 'recuperada', pvNaDerrota: -12 },
     });
+  });
+  it('descanso longo não substitui a decisão pendente do Mestre', async () => {
+    const invocada = invocarControlador('dono', 'a', 'leste');
+    if (!invocada.ok) throw new Error(invocada.motivo);
+    causarDanoInvocacao(invocada.tokenId, 24);
+
+    await useCharacterStore.getState().applyLongRest('dono');
+
+    expect(pegarFicha('dono').invocacoesConhecidas?.find(item => item.id === 'a')?.hpAtual).toBe(0);
+    expect(pegarFicha('dono').instanciasInvocacao?.[0]).toMatchObject({ estado: 'derrotada', hpAtual: -12 });
   });
   it('arquiva permanentemente a ficha e bloqueia sua invocação sem apagar o histórico', () => {
     const invocada = invocarControlador('dono', 'a', 'leste');

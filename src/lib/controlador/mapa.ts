@@ -106,13 +106,14 @@ function gravarInstancia(
   });
 }
 
-/** Registra a decisão manual do dono ou Mestre e preserva a instância derrotada no histórico. */
+/** Registra a decisão exclusiva do Mestre e preserva a instância derrotada no histórico. */
 export function resolverDerrotaPendenteInvocacao(
   donoId: string,
   invocacaoId: string,
   decisao: DecisaoManualDerrotaInvocacao,
   ator: { isMaster: boolean; profileId?: string },
 ): { ok: true } | { ok: false; motivo: string } {
+  if (!ator.isMaster) return { ok: false, motivo: 'Somente o Mestre pode resolver a derrota de uma invocação.' };
   const dono = useCharacterStore.getState().characters.find(character => character.id === donoId);
   if (!dono) return { ok: false, motivo: 'Personagem dono não encontrado.' };
   const modelo = dono.invocacoesConhecidas?.find(item => item.id === invocacaoId);
@@ -137,6 +138,67 @@ export function resolverDerrotaPendenteInvocacao(
     : item);
   gravarInstancia(dono, resultado.instancia, { invocacoesConhecidas: modelosAtualizados });
   return { ok: true };
+}
+
+/** Descanso longo restaura o catálogo e as instâncias ainda ativas, sem reescrever o histórico de saídas. */
+export function restaurarInvocacoesDescansoLongo(donoId: string): number {
+  const dono = useCharacterStore.getState().characters.find(character => character.id === donoId);
+  if (!dono) return 0;
+
+  const instancias = dono.instanciasInvocacao ?? [];
+  const derrotasPendentes = new Set(instancias
+    .filter(instancia => instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)
+    .map(instancia => instancia.modeloId));
+  const perdasPermanentes = new Set(instancias
+    .filter(instancia => instancia.resolucaoDerrota?.resultado === 'perda_permanente')
+    .map(instancia => instancia.modeloId));
+  const modelosRestauraveis = new Set((dono.invocacoesConhecidas ?? [])
+    .filter(modelo => !modelo.perdaPermanente && !perdasPermanentes.has(modelo.id) && !derrotasPendentes.has(modelo.id))
+    .map(modelo => modelo.id));
+  if (!modelosRestauraveis.size) return 0;
+
+  let quantidadeRestaurada = 0;
+  let alterouInstancia = false;
+  const modelosAtualizados = (dono.invocacoesConhecidas ?? []).map(modelo => {
+    if (!modelosRestauraveis.has(modelo.id) || modelo.hpAtual === modelo.hpMaximo) return modelo;
+    quantidadeRestaurada++;
+    return { ...modelo, hpAtual: modelo.hpMaximo };
+  });
+  const instanciasAtualizadas = instancias.map(instancia => {
+    if (!modelosRestauraveis.has(instancia.modeloId) || (instancia.estado !== 'ativa' && instancia.estado !== 'caida')) {
+      return instancia;
+    }
+    if (instancia.hpAtual === instancia.hpMaximoAtual && instancia.estado === 'ativa') return instancia;
+    alterouInstancia = true;
+    return InstanciaInvocacaoSchema.parse({
+      ...instancia,
+      version: instancia.version + 1,
+      hpAtual: instancia.hpMaximoAtual,
+      estado: 'ativa',
+    });
+  });
+
+  const alterouCatalogo = modelosAtualizados.some((modelo, index) => modelo !== (dono.invocacoesConhecidas ?? [])[index]);
+  if (alterouCatalogo || alterouInstancia) {
+    useCharacterStore.getState().updateCharacter(donoId, {
+      ...(alterouCatalogo ? { invocacoesConhecidas: modelosAtualizados } : {}),
+      ...(alterouInstancia ? { instanciasInvocacao: instanciasAtualizadas } : {}),
+    });
+  }
+
+  for (const instancia of instanciasAtualizadas) {
+    if (!modelosRestauraveis.has(instancia.modeloId) || (instancia.estado !== 'ativa' && instancia.estado !== 'caida')) continue;
+    const token = useMapStore.getState().entities[instancia.tokenId];
+    if (!token || token.invocationInstanceId !== instancia.id) continue;
+    if ((token.hp ?? 0) !== instancia.hpAtual || token.invocationState !== 'ativa') {
+      useMapStore.getState().updateEntity(token.id, {
+        hp: instancia.hpAtual,
+        hpMax: instancia.hpMaximoAtual,
+        invocationState: 'ativa',
+      });
+    }
+  }
+  return quantidadeRestaurada;
 }
 
 type ModoExecucaoComandoInvocacao = 'manual' | 'evento_automatico' | 'reacao';
@@ -303,13 +365,15 @@ export function invocarControlador(
   const modelo = dono.invocacoesConhecidas?.find(i => i.id === invocacaoId && i.donoCharacterId === donoId);
   if (!modelo) return { ok: false, motivo: 'Invocação não pertence ao catálogo.' };
   if (modelo.perdaPermanente) return { ok: false, motivo: 'Esta invocação foi declarada como perda permanente.' };
+  if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === invocacaoId && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
+    return { ok: false, motivo: 'A derrota desta invocação aguarda decisão do Mestre.' };
+  }
   if (!podeUsarVersaoAprovada({ estado: modelo.aprovacaoMestre, versaoAtual: modelo.versaoModelo, versaoAprovada: modelo.versaoAprovada })) return { ok: false, motivo: 'Esta versão da invocação ainda não foi aprovada pelo Mestre.' };
   const validacaoIntermediario = validarIntermediarioInvocacao(modelo, dono, useInventoryStore.getState().items, dono.invocacoesConhecidas ?? []);
   const motivoOverride = opcoes?.motivoOverrideIntermediario?.trim() ?? '';
   const overrideIntermediario = !validacaoIntermediario.ok && Boolean(motivoOverride);
   if (!validacaoIntermediario.ok && !motivoOverride) return { ok: false, motivo: validacaoIntermediario.motivo };
   if (overrideIntermediario && useRoleStore.getState().role !== 'MASTER') return { ok: false, motivo: 'Somente o Mestre pode ignorar a validação do intermediário.' };
-  if (modelo.hpAtual <= 0) return { ok: false, motivo: 'A invocação precisa ter PV para ser materializada.' };
   const tempoAdicional = tempoAdicionalEmSegundos(modelo.tempoAdicional);
   if (!tempoAdicional.ok) return { ok: false, motivo: tempoAdicional.motivo };
 
@@ -370,7 +434,7 @@ export function invocarControlador(
       hp: modelo.hpAtual, hpMax: modelo.hpMaximo, ownerCharId: donoId,
       ownerProfileId: dono.profileId || undefined, invocationId: modelo.id,
       invocationEventId: eventoId, invocationInstanceId: instanciaId,
-      invocationState: 'ativa',
+      invocationState: modelo.hpAtual > 0 ? 'ativa' : 'caida',
       invocationDefense: modelo.defesa, invocationMovementM: modelo.deslocamentoM,
     });
     const instancia = novaInstanciaInvocacao({
@@ -488,6 +552,9 @@ export function invocarControladores(
   const validacoesOverride: Array<{ modelo: InvocacaoControlador; motivo: string; override: boolean }> = [];
   for (const modelo of modelosValidos) {
     if (modelo.perdaPermanente) return { ok: false, motivo: 'A invocação ' + modelo.nome + ' foi declarada como perda permanente.' };
+    if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === modelo.id && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
+      return { ok: false, motivo: 'A derrota de ' + modelo.nome + ' aguarda decisão do Mestre.' };
+    }
     if (!podeUsarVersaoAprovada({ estado: modelo.aprovacaoMestre, versaoAtual: modelo.versaoModelo, versaoAprovada: modelo.versaoAprovada })) {
       return { ok: false, motivo: 'A invocação ' + modelo.nome + ' ainda não foi aprovada pelo Mestre.' };
     }
@@ -496,7 +563,6 @@ export function invocarControladores(
     const override = !validacao.ok && Boolean(motivo);
     if (!validacao.ok && !motivo) return { ok: false, motivo: validacao.motivo };
     if (override && useRoleStore.getState().role !== 'MASTER') return { ok: false, motivo: 'Somente o Mestre pode ignorar a validação do intermediário.' };
-    if (modelo.hpAtual <= 0) return { ok: false, motivo: 'A invocação ' + modelo.nome + ' precisa ter PV para ser materializada.' };
     const tempoAdicional = tempoAdicionalEmSegundos(modelo.tempoAdicional);
     if (!tempoAdicional.ok) return { ok: false, motivo: modelo.nome + ': ' + tempoAdicional.motivo };
     const alcance = modelo.alcanceInvocacaoM;
@@ -577,7 +643,7 @@ export function invocarControladores(
         hp: modelo.hpAtual, hpMax: modelo.hpMaximo, ownerCharId: donoId,
         ownerProfileId: dono.profileId || undefined, invocationId: modelo.id,
         invocationEventId: eventoDaInstancia, invocationBatchId: eventoId, invocationInstanceId: instanciaId,
-        invocationState: 'ativa',
+        invocationState: modelo.hpAtual > 0 ? 'ativa' : 'caida',
         invocationDefense: modelo.defesa, invocationMovementM: modelo.deslocamentoM,
       });
       instanciasCriadas.push(novaInstanciaInvocacao({

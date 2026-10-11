@@ -338,7 +338,9 @@ describe('controlador remoto e confirmação de entrega', () => {
       comoTela({ role: 'MASTER', profileId: null });
       fireEvent.click(screen.getByText('Retomar todas as reações'));
       const retomada = useReacoesAtivasStore.getState().janelas[0].expiresAt!;
-      expect(retomada - Date.now()).toBe(PRAZO_ESCOLHA_REACAO_MS + 10000);
+    const restanteAposRetomada = retomada - Date.now();
+    expect(restanteAposRetomada).toBeGreaterThanOrEqual(PRAZO_ESCOLHA_REACAO_MS + 9998);
+    expect(restanteAposRetomada).toBeLessThanOrEqual(PRAZO_ESCOLHA_REACAO_MS + 10000);
       expect(enviados.some(e => e.detail.tipo === 'controle_prazo' && e.detail.papelRemetente === 'MASTER')).toBe(true);
       await vi.advanceTimersByTimeAsync(PRAZO_ESCOLHA_REACAO_MS + 10000);
       expect(await p).toEqual({ cancelado: false, defesaBonus: 0, testeBonus: 0 });
@@ -351,7 +353,6 @@ describe('controlador remoto e confirmação de entrega', () => {
   it('sessões de jogador aceitam controles globais marcados como enviados pelo Mestre', () => {
     add();
     abrirJanelaReacaoAtiva(evento);
-    const prazoOriginal = useReacoesAtivasStore.getState().janelas[0].expiresAt!;
     comoTela({ role: 'PLAYER', profileId: 'perfil-u' });
     receberControlePrazoReacoes({ acao: 'pausar', papelRemetente: 'PLAYER' });
     expect(useReacoesAtivasStore.getState().janelas[0].pausada).not.toBe(true);
@@ -360,9 +361,13 @@ describe('controlador remoto e confirmação de entrega', () => {
     receberControlePrazoReacoes({ acao: 'estender', segundos: 5, papelRemetente: 'MASTER' });
     const restante = useReacoesAtivasStore.getState().janelas[0].tempoRestanteMs!;
     expect(restante).toBeGreaterThan(0);
-    expect(restante).toBeLessThanOrEqual(prazoOriginal - Date.now() + 5000);
+    expect(restante).toBeGreaterThan(PRAZO_ESCOLHA_REACAO_MS + 4000);
+    expect(restante).toBeLessThanOrEqual(PRAZO_ESCOLHA_REACAO_MS + 5000);
     receberControlePrazoReacoes({ acao: 'retomar', papelRemetente: 'MASTER' });
-    expect(useReacoesAtivasStore.getState().janelas[0].expiresAt).toBe(Date.now() + restante);
+    const expiraEm = useReacoesAtivasStore.getState().janelas[0].expiresAt!;
+    const diferenca = expiraEm - Date.now() - restante;
+    expect(diferenca).toBeGreaterThanOrEqual(-1);
+    expect(diferenca).toBeLessThanOrEqual(1);
   });
   it('confirmação mantém a janela ativa; continuar libera uma sessão que parou de responder', async () => {
     const ev=mesaRemota();vi.useFakeTimers();

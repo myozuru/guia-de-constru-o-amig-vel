@@ -53,19 +53,19 @@ A ficha de criação de **cada Shikigami** deve oferecer um campo livre para def
 
 **Regra confirmada em 2026-10-09 — momento do acréscimo:** o tempo adicional de um Shikigami é acrescido **no instante em que ele é invocado**, não automaticamente no começo de cada turno e não somente quando recebe um comando.
 
-**Regra confirmada em 2026-10-11 — tempo compartilhado:** a invocação adiciona seu tempo configurado ao relógio global ao ser materializada. Depois do acréscimo, todos compartilham o mesmo saldo e a mesma expiração; não há escolha de prioridade ou reserva separada a consumir por Shikigami. Cada acréscimo ainda deve ser identificado para evitar duplicação do mesmo evento de invocação.
+**Regra confirmada em 2026-10-11 — tempo compartilhado:** a invocação adiciona seu tempo configurado ao relógio global ao ser materializada. Depois do acréscimo, todos compartilham o mesmo saldo e a mesma expiração; não há relógios independentes nem prioridade por Shikigami. Os registros por instância servem para identificar/idempotizar acréscimos e retirar a parte restante em uma dissipação voluntária. O tempo global decorrido é distribuído proporcionalmente entre o tempo-base e os acréscimos ativos, sem FIFO.
 
 **Regra confirmada em 2026-10-11 — dissipação voluntária:** quando a invocação é dissipada por escolha do Controlador ou Mestre, retirar do relógio global o tempo restante associado àquela invocação. Se essa retirada levaria o saldo abaixo de 10 segundos, o relógio fica em 10 segundos. Não retirar tempo já consumido.
 
-**Regra confirmada em 2026-10-11 — 0 PV e derrota:** chegar a **0 PV não causa perda permanente**. A invocação continua disponível como ficha e não é removida da biblioteca. A perda permanente só pode ser considerada ao atingir **−100% dos PV máximos** (por exemplo, −20 PV para uma invocação com PV máximo 20), e o Mestre decide se ela ocorre. A duração e os efeitos da incapacitação ainda serão definidos; não implementar uma regra provisória para esse período.
+**Regra confirmada em 2026-10-11 — 0 PV e derrota:** chegar a **0 PV não causa perda permanente**. A ficha continua no catálogo e pode ser invocada com 0 PV; materializa Caída. Ao atingir **−100% dos PV máximos** (por exemplo, −20 PV para uma invocação com PV máximo 20), o Mestre precisa decidir antes de permitir nova materialização. A perda permanente não ocorre automaticamente. A duração e os efeitos da incapacitação ainda serão definidos; não inventar uma duração provisória.
 
 **Regra confirmada em 2026-10-11 — recuperação:** a invocação recupera **100% dos PV após um descanso longo**. O tratamento de cura parcial, retorno à ação e duração da incapacitação fica pendente de revisão; não aplicar a regra anterior de levantar com Ação de Movimento até essa revisão.
 
 **Regra confirmada em 2026-10-11 — tempo após derrota:** ao atingir −100% dos PV máximos, não descontar do relógio global o tempo já adicionado por aquela invocação. Registrar o evento separado da dissipação voluntária; a decisão sobre perda permanente continua exclusiva do Mestre.
 
-**Regra confirmada em 2026-10-11 — Hordas:** uma Horda usa um tempo próprio como **uma única entidade**, sem cronômetros individuais por integrante. A Horda compartilha uma reserva geral de PV; não há uma vida separada para cada integrante.
+**Regra confirmada em 2026-10-11 — Hordas:** uma Horda adiciona tempo como **uma única entidade** ao relógio global, sem cronômetros por integrante. A Horda compartilha um total geral de PV; não há uma vida separada para cada integrante.
 
-**Pendências que exigem esclarecimento antes da implementação:** duração/efeitos da incapacitação; regras de reinvocação (PE, PV e ações); valor adicional de PE para integrante de Primeiro Grau sob líder Especial; como a reserva temporal única da Horda interage com o relógio global e com seu fim; fim do combate. O limite de Hordas ativas é arredondado para baixo.
+**Pendências:** duração/efeitos da incapacitação; valor adicional de PE para integrante de Primeiro Grau sob líder Especial; implementação e interações de Hordas (incluindo perda de membros, dano em área, tamanho e fim do combate). O limite de Hordas ativas é arredondado para baixo. Invocar continua como Ação Livre e cada nova materialização usa o custo de PE configurado na ficha.
 
 ### 10. Economia de ações independente
 Cada Shikigami terá **seu próprio conjunto de ações e recursos**, definidos na sua ficha no momento da criação, em vez de compartilhar as quantidades de ações do jogador. Eles são entidades autônomas em combate, funcionando quase como personagens individuais, mas mantendo vínculo com o proprietário e com o relógio global conforme a decisão anterior.
@@ -90,11 +90,11 @@ Cada Shikigami deve ter identidade visual, imagem/token, ficha, HUD e indicadore
 ## Novas verificações de aceitação
 - [ ] Seleção e controle por HUD de invocação e por HUD do Controlador.
 - [ ] Campo configurável de tempo extra na criação de cada Shikigami.
-- [ ] Acrescentar o tempo configurado ao relógio global ao invocar, sem duplicar o evento; todos compartilham o saldo e terminam quando esse relógio chega a zero, sem FIFO/prioridade por Shikigami.
-- [ ] Na dissipação voluntária, descontar o tempo associado à invocação e respeitar o piso de 10 segundos; a contabilização desse desconto precisa ser definida sem recriar prioridade individual.
-- [ ] Manter a invocação disponível ao chegar a 0 PV e recuperar 100% dos PV em descanso longo; definir e implementar a duração/efeitos da incapacitação.
-- [ ] Perda permanente só após atingir −100% dos PV máximos e sempre por decisão do Mestre.
-- [ ] Criar Horda com um relógio e um total geral de PV para a entidade inteira; definir interação do relógio da Horda com o global.
+- [ ] Acrescentar o tempo configurado ao relógio global ao invocar, sem duplicar o evento; todos compartilham o saldo e terminam quando esse relógio chega a zero, sem relógio independente ou FIFO por Shikigami.
+- [ ] Na dissipação voluntária, descontar a parte restante atribuída à invocação pelo consumo proporcional e respeitar o piso de 10 segundos.
+- [x] Manter a ficha invocável no catálogo com 0 PV; ela materializa Caída. O Mestre decide a derrota, e um descanso longo restaura 100% dos PV. A duração/efeitos da incapacitação continuam pendentes.
+- [x] Perda permanente só após atingir −100% dos PV máximos e sempre por decisão do Mestre.
+- [ ] Criar Horda com uma contribuição única ao relógio global e um total geral de PV para a entidade inteira; o limite de Hordas é metade do limite em campo, arredondado para baixo.
 - [ ] Preservar o tempo restante no relógio global após derrota definitiva.
 - [ ] Recursos e ações separados por invocação e independentes do saldo de ações do dono.
 - [ ] Autonomia e custos próprios configuráveis por invocação no OMNI.

@@ -5173,6 +5173,8 @@ export const useCharacterStore = create<CharacterStore>()(
         // Sincroniza condições automáticas de exaustão no alvo (caso o nível mudou).
         const after = get().characters.find((x) => x.id === charId);
         if (after) get().setExhaustion(charId, clampExh(after.exhaustionLevel));
+        const { restaurarInvocacoesDescansoLongo } = await import('@/lib/controlador/mapa');
+        restaurarInvocacoesDescansoLongo(charId);
         // 🆕 Omni — dispara aoDescansar (longo). Passivas Seis Olhos zeram fadiga aqui.
         import('@/lib/omni/eventBus').then(({ emitirEvento }) => {
           emitirEvento('aoDescansar', { usuarioId: charId, cena: { tipo: 2 /* longo */ }, incluirPassivas: true });

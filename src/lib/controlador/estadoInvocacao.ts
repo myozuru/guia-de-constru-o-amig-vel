@@ -29,47 +29,46 @@ export function validarDissipacaoVoluntaria(input: {
 }
 
 export type DecisaoManualDerrotaInvocacao =
-  | { resultado: 'recuperada'; pvRecuperados: number }
+  | { resultado: 'recuperada' }
   | { resultado: 'perda_permanente' };
 
 export type ResultadoResolucaoDerrotaInvocacao =
   | { ok: true; instancia: InstanciaInvocacao; pvCatalogo: number; perdaPermanente: boolean }
   | { ok: false; motivo: string };
 
-/** Registra a decisão humana sem apagar o PV que a instância tinha ao ser derrotada. */
+/** Registra a decisão do Mestre sem apagar os PV que a instância tinha ao ser derrotada. */
 export function resolverDerrotaManualInvocacao(
   instancia: InstanciaInvocacao,
   decisao: DecisaoManualDerrotaInvocacao,
   ator: { isMaster: boolean; profileId?: string; ownerProfileId?: string },
 ): ResultadoResolucaoDerrotaInvocacao {
+  if (!ator.isMaster) {
+    return { ok: false, motivo: 'Somente o Mestre pode resolver a derrota de uma invocação.' };
+  }
   if (instancia.estado !== 'derrotada' || instancia.resolucaoDerrota) {
     return { ok: false, motivo: 'Esta derrota já foi resolvida ou não está pendente.' };
   }
-  if (!ator.isMaster && (!ator.profileId || !ator.ownerProfileId || ator.profileId !== ator.ownerProfileId)) {
-    return { ok: false, motivo: 'Somente o Controlador dono ou o Mestre pode resolver esta derrota.' };
+  if (decisao.resultado === 'perda_permanente' && instancia.hpAtual > -instancia.hpMaximoAtual) {
+    return { ok: false, motivo: 'A perda permanente só pode ser declarada ao atingir −100% dos PV máximos.' };
   }
 
   const resolvidaEm = new Date().toISOString();
   const resolvidaPorProfileId = ator.profileId;
   if (decisao.resultado === 'recuperada') {
-    if (!Number.isInteger(decisao.pvRecuperados) || decisao.pvRecuperados < 1 || decisao.pvRecuperados > instancia.hpMaximoAtual) {
-      return { ok: false, motivo: `Informe PV inteiros entre 1 e ${instancia.hpMaximoAtual}.` };
-    }
     const atualizada = InstanciaInvocacaoSchema.parse({
       ...instancia,
       version: instancia.version + 1,
-      hpAtual: decisao.pvRecuperados,
+      hpAtual: 0,
       estado: 'dissipada',
       causasSaida: Array.from(new Set([...(instancia.causasSaida ?? []), 'derrota_recuperada_manualmente'])),
       resolucaoDerrota: {
         resultado: 'recuperada',
         pvNaDerrota: instancia.hpAtual,
-        pvRecuperados: decisao.pvRecuperados,
         resolvidaEm,
         ...(resolvidaPorProfileId ? { resolvidaPorProfileId } : {}),
       },
     });
-    return { ok: true, instancia: atualizada, pvCatalogo: decisao.pvRecuperados, perdaPermanente: false };
+    return { ok: true, instancia: atualizada, pvCatalogo: 0, perdaPermanente: false };
   }
 
   const atualizada = InstanciaInvocacaoSchema.parse({

@@ -83,7 +83,6 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
   const [multiplicadorDanoAtributoAtaque, setMultiplicadorDanoAtributoAtaque] = useState('');
   const [periciasSelecionadas, setPericiasSelecionadas] = useState<Record<string, string>>({});
   const [busyPericia, setBusyPericia] = useState<Record<string, boolean>>({});
-  const [pvRecuperacaoDerrota, setPvRecuperacaoDerrota] = useState<Record<string, string>>({});
   const [confirmandoPerdaDerrota, setConfirmandoPerdaDerrota] = useState<string | null>(null);
 
   const entities = useMapStore(s => s.entities);
@@ -210,9 +209,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
     setErro(''); setMensagem('Invocação levantada; Ação de Movimento própria consumida.');
   };
   const resolverDerrota = (id: string, resultado: 'recuperada' | 'perda_permanente') => {
-    const decisao = resultado === 'recuperada'
-      ? { resultado, pvRecuperados: Number(pvRecuperacaoDerrota[id]) } as const
-      : { resultado } as const;
+    const decisao = { resultado } as const;
     const resolucao = resolverDerrotaPendenteInvocacao(character.id, id, decisao, {
       isMaster,
       profileId: activeProfileId || undefined,
@@ -220,10 +217,9 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
     if (!resolucao.ok) { setErro(resolucao.motivo); return; }
     setErro('');
     setMensagem(resultado === 'recuperada'
-      ? 'Recuperação registrada. A próxima invocação começa com os PV escolhidos.'
+      ? 'Recuperação autorizada pelo Mestre. A invocação volta com 100% dos PV após um descanso longo.'
       : 'Perda permanente registrada; a ficha foi arquivada e o histórico foi preservado.');
     setConfirmandoPerdaDerrota(null);
-    setPvRecuperacaoDerrota(current => ({ ...current, [id]: '' }));
   };
   const catalogo = character.invocacoesConhecidas ?? [];
   const assetForFicha = (inv: InvocacaoControlador) => {
@@ -458,7 +454,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
           {carregandoArteId === 'lote' ? 'Preparando posicionamento…' : 'Invocar selecionadas (' + invocacoesSelecionadas.length + '/2)'}
         </button>
       </div>
-      <p className="text-xs text-muted-foreground">Selecione até duas fichas e clique no mapa para escolher uma célula livre para cada uma. Invocar é Ação Livre por enquanto.</p>
+      <p className="text-xs text-muted-foreground">Selecione até duas fichas e clique no mapa para escolher uma célula livre para cada uma. Invocar é Ação Livre por enquanto. Fichas com 0 PV continuam invocáveis e entram Caídas; descanso longo restaura 100% dos PV.</p>
       {mensagem && <p role="status" className="text-xs text-muted-foreground">{mensagem}</p>}
       {catalogo.map(inv => {
         const arte = assetForFicha(inv);
@@ -473,13 +469,13 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
         const contribuicaoTempo = instancia?.contribuicaoTempo;
         const tempoConfigurado = tempoAdicionalEmSegundos(inv.tempoAdicional);
         const rotuloTempo = contribuicaoTempo?.estado === 'consolacao'
-          ? `Reserva preservada após derrota: ${formatarSegundosTempoInvocacao(contribuicaoTempo.quantidadeRestante)} s`
+          ? `Contribuição preservada no relógio global após derrota: ${formatarSegundosTempoInvocacao(contribuicaoTempo.quantidadeRestante)} s`
           : contribuicaoTempo?.estado === 'ativa'
-            ? `Reserva desta instância: ${formatarSegundosTempoInvocacao(contribuicaoTempo.quantidadeRestante)} s`
+            ? `Parte desta invocação no relógio global: ${formatarSegundosTempoInvocacao(contribuicaoTempo.quantidadeRestante)} s`
             : contribuicaoTempo?.estado === 'retirada'
-              ? 'Reserva desta instância: retirada por dissipação'
+              ? 'Contribuição retirada do relógio global por dissipação'
               : contribuicaoTempo?.estado === 'consumida'
-                ? 'Reserva desta instância: consumida ou encerrada'
+                ? 'Contribuição consumida ou encerrada'
                 : !inv.tempoAdicional
                   ? 'Tempo extra: não configurado'
                   : tempoConfigurado.ok
@@ -506,6 +502,8 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
             ? 'Derrotada — aguardando resolução'
             : estadoInstancia === 'caida'
               ? 'Caída — cura acima de 0 PV e Ação de Movimento própria para levantar'
+              : inv.hpAtual <= 0 && !ativo
+                ? 'Disponível com 0 PV — ficará Caída ao ser invocada'
               : estadoInstancia === 'ativa'
                 ? 'Ativa no mapa'
                 : estadoInstancia === 'dissipada'
@@ -514,9 +512,9 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
         const aprovado = podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada });
         const automacoesAtivas = (inv.automacoesOmni ?? []).filter(automacao => automacao.habilitada).length;
         const podeIntervirNaAutonomia = isMaster || Boolean(character.profileId && activeProfileId === character.profileId);
-        const podeResolverDerrota = isMaster || Boolean(character.profileId && activeProfileId === character.profileId);
+        const podeResolverDerrota = isMaster;
         const alcanceConfigurado = Number.isFinite(inv.alcanceInvocacaoM) && (inv.alcanceInvocacaoM ?? -1) >= 0;
-        const podeSelecionar = !inv.perdaPermanente && !ativo && !derrotaPendente && inv.hpAtual > 0 && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
+        const podeSelecionar = !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
         return (
         <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border p-2">
           <div className="flex items-center gap-2">
@@ -528,16 +526,15 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
           <div className={'basis-full text-xs ' + (derrotaPendente ? 'text-destructive' : estadoInstancia === 'caida' ? 'text-amber-300' : 'text-muted-foreground')}>Estado de combate: {rotuloEstado}{estadoInstancia === 'derrotada' && instancia ? ` (PV ${instancia.hpAtual})` : ''}</div>
           {resolucaoDerrota && <div className="basis-full text-xs text-muted-foreground">
             {resolucaoDerrota.resultado === 'recuperada'
-              ? `Derrota resolvida: recuperação manual para ${resolucaoDerrota.pvRecuperados} PV. PV ao ser derrotada: ${resolucaoDerrota.pvNaDerrota}.`
+              ? resolucaoDerrota.pvRecuperados !== undefined
+                ? `Derrota resolvida por uma versão anterior: recuperação manual para ${resolucaoDerrota.pvRecuperados} PV. PV ao ser derrotada: ${resolucaoDerrota.pvNaDerrota}.`
+                : `Derrota resolvida pelo Mestre; a ficha retorna com 100% dos PV após um descanso longo. PV ao ser derrotada: ${resolucaoDerrota.pvNaDerrota}.`
               : `Perda permanente registrada com ${resolucaoDerrota.pvNaDerrota} PV; ficha arquivada.`}
           </div>}
           {derrotaPendente && podeResolverDerrota && instancia && <div className="basis-full space-y-2 rounded border border-destructive/50 p-2">
-            <p className="text-xs">O Controlador dono ou o Mestre registra a recuperação com PV escolhidos manualmente, ou confirma a perda permanente. A instância derrotada fica no histórico.</p>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-xs">PV após recuperação (1–{instancia.hpMaximoAtual})
-                <input aria-label={`PV após recuperação de ${inv.apelido?.trim() || inv.nome}`} type="number" min="1" max={instancia.hpMaximoAtual} step="1" value={pvRecuperacaoDerrota[inv.id] ?? ''} onChange={event => setPvRecuperacaoDerrota(current => ({ ...current, [inv.id]: event.target.value }))} className="mt-1 block w-32 rounded border bg-background p-2" />
-              </label>
-              <button type="button" disabled={!Number.isInteger(Number(pvRecuperacaoDerrota[inv.id])) || Number(pvRecuperacaoDerrota[inv.id]) < 1 || Number(pvRecuperacaoDerrota[inv.id]) > instancia.hpMaximoAtual} className="rounded border border-primary px-2 py-2 text-xs disabled:opacity-50" onClick={() => resolverDerrota(inv.id, 'recuperada')}>Registrar recuperação</button>
+            <p className="text-xs">Somente o Mestre decide. Ao autorizar a recuperação, a invocação fica com 0 PV até um descanso longo, que restaura 100% dos PV. A perda permanente só pode ser declarada após atingir −100% dos PV máximos. A instância derrotada fica no histórico.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="rounded border border-primary px-2 py-2 text-xs" onClick={() => resolverDerrota(inv.id, 'recuperada')}>Autorizar recuperação</button>
               {confirmandoPerdaDerrota === inv.id ? <>
                 <span className="text-xs text-destructive">Esta decisão arquiva a ficha sem possibilidade de invocá-la novamente.</span>
                 <button type="button" className="rounded border border-destructive px-2 py-2 text-xs" onClick={() => resolverDerrota(inv.id, 'perda_permanente')}>Confirmar perda permanente</button>

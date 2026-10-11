@@ -83,12 +83,18 @@ export function reservaTempoAtivaNoCombate(
 export function consumoPorTempoDecorrido(input: {
   baseRestante: number;
   segundosDecorridos: number;
+  reservasRestantes?: number;
 }): { baseRestante: number; consumirReservas: number } {
   const base = Math.max(0, Number.isFinite(input.baseRestante) ? input.baseRestante : 0);
   const decorrido = Math.max(0, Number.isFinite(input.segundosDecorridos) ? input.segundosDecorridos : 0);
+  const reservas = Math.max(0, Number.isFinite(input.reservasRestantes) ? input.reservasRestantes! : 0);
+  if (reservas <= 0) return { baseRestante: Math.max(0, base - decorrido), consumirReservas: 0 };
+  const total = base + reservas;
+  if (total <= 0 || decorrido <= 0) return { baseRestante: base, consumirReservas: 0 };
+  const proporcaoConsumida = Math.min(1, decorrido / total);
   return {
-    baseRestante: Math.max(0, base - decorrido),
-    consumirReservas: Math.max(0, decorrido - base),
+    baseRestante: Math.max(0, base * (1 - proporcaoConsumida)),
+    consumirReservas: Math.max(0, reservas * proporcaoConsumida),
   };
 }
 

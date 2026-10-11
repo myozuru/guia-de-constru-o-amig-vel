@@ -113,7 +113,7 @@ describe('Controlador — reservas de tempo', () => {
     expect(useCombatStore.getState().getTurnRemaining()).toBe(72);
   });
 
-  it('consome primeiro o tempo-base e depois as reservas em FIFO', () => {
+  it('consome o relógio global sem prioridade entre o tempo-base e as contribuições', () => {
     const primeira = instanciaComReserva('inst-1', 5, '2026-10-10T09:00:00.000Z');
     const segunda = instanciaComReserva('inst-2', 7, '2026-10-10T09:01:00.000Z');
     configurarRelogio([segunda, primeira], { turnRemainingAtStart: 72, turnStartedAt: Date.now() - 65_000 });
@@ -121,10 +121,23 @@ describe('Controlador — reservas de tempo', () => {
     useCombatStore.getState().settleTurnTimer();
 
     const instancias = useCharacterStore.getState().characters[0].instanciasInvocacao ?? [];
-    expect(useCombatStore.getState().turnBaseRemainingAtStart).toBe(0);
+    expect(useCombatStore.getState().turnBaseRemainingAtStart).toBeCloseTo(60 * 7 / 72);
     expect(useCombatStore.getState().turnRemainingAtStart).toBeCloseTo(7);
-    expect(instancias.find(item => item.id === 'inst-1')?.contribuicaoTempo).toMatchObject({ estado: 'consumida', quantidadeRestante: 0 });
-    expect(instancias.find(item => item.id === 'inst-2')?.contribuicaoTempo).toMatchObject({ estado: 'ativa', quantidadeRestante: 7 });
+    expect(instancias.find(item => item.id === 'inst-1')?.contribuicaoTempo?.quantidadeRestante).toBeCloseTo(5 * 7 / 72);
+    expect(instancias.find(item => item.id === 'inst-2')?.contribuicaoTempo?.quantidadeRestante).toBeCloseTo(7 * 7 / 72);
+    expect(instancias.every(item => item.contribuicaoTempo?.estado === 'ativa')).toBe(true);
+  });
+
+  it('distribui proporcionalmente também os ajustes negativos do relógio', () => {
+    const instancia = instanciaComReserva('inst-1', 12, '2026-10-10T09:00:00.000Z');
+    configurarRelogio([instancia], { turnRemainingAtStart: 72 });
+
+    useCombatStore.getState().adjustTurnTime(-10);
+
+    expect(useCombatStore.getState().turnRemainingAtStart).toBe(62);
+    expect(useCombatStore.getState().turnBaseRemainingAtStart).toBeCloseTo(60 - (60 * 10 / 72));
+    expect(useCharacterStore.getState().characters[0].instanciasInvocacao?.[0].contribuicaoTempo?.quantidadeRestante)
+      .toBeCloseTo(12 - (12 * 10 / 72));
   });
 
   it('aplica o piso de dez segundos ao retirar reserva voluntariamente', () => {
@@ -135,7 +148,13 @@ describe('Controlador — reservas de tempo', () => {
 
     expect(resultado).toMatchObject({ removedSeconds: 10, discardedSeconds: 2, clockBefore: 20, clockAfter: 10, appliedToCurrentClock: true });
     expect(useCombatStore.getState().turnRemainingAtStart).toBe(10);
+    expect(useCombatStore.getState().turnBaseRemainingAtStart).toBe(10);
     expect(useCharacterStore.getState().characters[0].instanciasInvocacao?.[0].contribuicaoTempo).toMatchObject({ estado: 'retirada', quantidadeRestante: 0 });
+
+    vi.advanceTimersByTime(1_000);
+    useCombatStore.getState().settleTurnTimer();
+    expect(useCombatStore.getState().turnRemainingAtStart).toBe(9);
+    expect(useCombatStore.getState().turnBaseRemainingAtStart).toBe(9);
   });
 
   it('não reduz um relógio que já está no piso ou abaixo dele', () => {
@@ -148,9 +167,14 @@ describe('Controlador — reservas de tempo', () => {
     expect(useCombatStore.getState().turnRemainingAtStart).toBe(9);
   });
 
-  it('calcula separadamente consumo da base e excedente destinado às reservas', () => {
+  it('distribui o consumo proporcionalmente entre tempo-base e contribuições', () => {
+    const parcial = consumoPorTempoDecorrido({ baseRestante: 15, reservasRestantes: 12, segundosDecorridos: 10 });
+    expect(parcial.baseRestante).toBeCloseTo(15 * 17 / 27);
+    expect(parcial.consumirReservas).toBeCloseTo(12 * 10 / 27);
+    const quaseEsgotado = consumoPorTempoDecorrido({ baseRestante: 15, reservasRestantes: 12, segundosDecorridos: 20 });
+    expect(quaseEsgotado.baseRestante).toBeCloseTo(15 * 7 / 27);
+    expect(quaseEsgotado.consumirReservas).toBeCloseTo(12 * 20 / 27);
     expect(consumoPorTempoDecorrido({ baseRestante: 15, segundosDecorridos: 10 })).toEqual({ baseRestante: 5, consumirReservas: 0 });
-    expect(consumoPorTempoDecorrido({ baseRestante: 15, segundosDecorridos: 20 })).toEqual({ baseRestante: 0, consumirReservas: 5 });
   });
 
   it('cria um grant em segundos com vínculo estável ao evento e à instância', () => {

@@ -370,7 +370,8 @@ export const ResolucaoDerrotaInvocacaoSchema = z.discriminatedUnion("resultado",
   z.object({
     resultado: z.literal("recuperada"),
     pvNaDerrota: finiteNumberSchema,
-    pvRecuperados: finiteNumberSchema.min(1),
+    /** Presente apenas em registros legados que permitiam recuperação parcial. */
+    pvRecuperados: finiteNumberSchema.min(1).optional(),
     resolvidaEm: z.string(),
     resolvidaPorProfileId: idSchema.optional(),
   }).strict(),

@@ -18,42 +18,50 @@ function derrotada() {
 }
 
 describe('resolução manual de derrota de invocação', () => {
-  it('permite apenas o dono ou o Mestre', () => {
+  it('permite apenas o Mestre', () => {
     expect(resolverDerrotaManualInvocacao(derrotada(), { resultado: 'perda_permanente' }, {
       isMaster: false, profileId: 'outro-perfil', ownerProfileId: 'perfil-dono',
     })).toMatchObject({ ok: false });
+
+    expect(resolverDerrotaManualInvocacao(derrotada(), { resultado: 'perda_permanente' }, {
+      isMaster: false, profileId: 'perfil-dono', ownerProfileId: 'perfil-dono',
+    })).toMatchObject({ ok: false, motivo: 'Somente o Mestre pode resolver a derrota de uma invocação.' });
 
     expect(resolverDerrotaManualInvocacao(derrotada(), { resultado: 'perda_permanente' }, {
       isMaster: true, profileId: 'perfil-mestre', ownerProfileId: 'perfil-dono',
     })).toMatchObject({ ok: true });
   });
 
-  it('registra PV escolhidos manualmente e mantém o PV da derrota no histórico', () => {
+  it('registra recuperação pelo Mestre com 0 PV até descanso longo e mantém a derrota no histórico', () => {
     const resultado = resolverDerrotaManualInvocacao(derrotada(), {
-      resultado: 'recuperada', pvRecuperados: 7,
-    }, { isMaster: false, profileId: 'perfil-dono', ownerProfileId: 'perfil-dono' });
+      resultado: 'recuperada',
+    }, { isMaster: true, profileId: 'perfil-mestre', ownerProfileId: 'perfil-dono' });
 
     expect(resultado).toMatchObject({
       ok: true,
-      pvCatalogo: 7,
+      pvCatalogo: 0,
       perdaPermanente: false,
       instancia: {
         estado: 'dissipada',
-        hpAtual: 7,
-        resolucaoDerrota: { resultado: 'recuperada', pvNaDerrota: -12, pvRecuperados: 7, resolvidaPorProfileId: 'perfil-dono' },
+        hpAtual: 0,
+        resolucaoDerrota: { resultado: 'recuperada', pvNaDerrota: -12, resolvidaPorProfileId: 'perfil-mestre' },
       },
     });
   });
 
-  it.each([0, -1, 13, 1.5])('recusa PV de recuperação inválidos (%s)', pv => {
+  it('não permite declarar perda permanente antes do limiar de −100% dos PV máximos', () => {
+    const acimaDoLimiar = { ...derrotada(), hpAtual: -11 };
     expect(resolverDerrotaManualInvocacao(derrotada(), {
-      resultado: 'recuperada', pvRecuperados: pv,
-    }, { isMaster: true })).toMatchObject({ ok: false });
+      resultado: 'recuperada',
+    }, { isMaster: false, profileId: 'perfil-dono' })).toMatchObject({ ok: false });
+    expect(resolverDerrotaManualInvocacao(acimaDoLimiar, {
+      resultado: 'perda_permanente',
+    }, { isMaster: true })).toMatchObject({ ok: false, motivo: 'A perda permanente só pode ser declarada ao atingir −100% dos PV máximos.' });
   });
 
   it('arquiva a perda permanente sem apagar a ficha nem reescrever a derrota', () => {
     const resultado = resolverDerrotaManualInvocacao(derrotada(), { resultado: 'perda_permanente' }, {
-      isMaster: false, profileId: 'perfil-dono', ownerProfileId: 'perfil-dono',
+      isMaster: true, profileId: 'perfil-mestre', ownerProfileId: 'perfil-dono',
     });
 
     expect(resultado).toMatchObject({
@@ -63,14 +71,14 @@ describe('resolução manual de derrota de invocação', () => {
       instancia: {
         estado: 'derrotada',
         hpAtual: -12,
-        resolucaoDerrota: { resultado: 'perda_permanente', pvNaDerrota: -12, resolvidaPorProfileId: 'perfil-dono' },
+        resolucaoDerrota: { resultado: 'perda_permanente', pvNaDerrota: -12, resolvidaPorProfileId: 'perfil-mestre' },
       },
     });
   });
 
   it('não permite resolver novamente uma instância já resolvida', () => {
     const recuperada = resolverDerrotaManualInvocacao(derrotada(), {
-      resultado: 'recuperada', pvRecuperados: 3,
+      resultado: 'recuperada',
     }, { isMaster: true });
     expect(recuperada.ok && resolverDerrotaManualInvocacao(recuperada.instancia, {
       resultado: 'perda_permanente',
