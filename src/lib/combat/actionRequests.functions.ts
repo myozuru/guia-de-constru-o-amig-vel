@@ -20,6 +20,11 @@ const assignOwnerInputSchema = z
   })
   .strict();
 const resolutionInputSchema = publicCombatResolutionSchema;
+const saveCharactersInputSchema = z.object({
+  requestId: z.string().uuid(),
+  expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  characters: z.array(z.record(z.string(), z.unknown())).max(1000),
+}).strict();
 
 type AuthContext = {
   userId: string;
@@ -123,6 +128,38 @@ export const listCombatCharacterOwners = createServerFn({ method: "GET" })
     return Object.fromEntries(
       (data ?? []).map((row) => [row.character_id, row.owner_user_id]),
     );
+  });
+
+/**
+ * Persiste a fatia inteira por uma RPC transacional. O banco usa auth.uid(),
+ * papel e combat_character_owners; perfil e role do cliente não autorizam a gravação.
+ */
+export const saveCharactersSliceSecurely = createServerFn({ method: "POST" })
+  .middleware([forwardSupabaseFunctionAuth, requireSupabaseAuth])
+  .validator((input: unknown) => saveCharactersInputSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: result, error } = await context.supabase.rpc("write_owned_characters_slice", {
+      p_request_id: data.requestId,
+      p_expected_revision: data.expectedRevision,
+      p_characters: data.characters as unknown as import("@/integrations/supabase/types").Json,
+    });
+    if (error) {
+      if (error.code === "40001") return { ok: false as const, code: "stale" as const, message: "A fatia mudou; sincronize novamente." };
+      if (error.code === "42501") return { ok: false as const, code: "forbidden" as const, message: "A conta não tem autorização para esta gravação." };
+      if (error.code === "22023") return { ok: false as const, code: "invalid" as const, message: "A solicitação de gravação é inválida." };
+      return { ok: false as const, code: "failed" as const, message: "Não foi possível salvar as fichas com segurança." };
+    }
+    const saved = result as {
+      revision: number;
+      data: import("@/integrations/supabase/types").Json;
+      duplicate: boolean;
+    };
+    return {
+      ok: true as const,
+      revision: saved.revision,
+      data: saved.data,
+      duplicate: saved.duplicate,
+    };
   });
 
 /** Cria uma intenção pendente; não cobra recursos nem modifica fichas. */

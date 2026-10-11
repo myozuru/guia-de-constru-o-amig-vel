@@ -8,6 +8,7 @@ import { comPreviaMovimento, receberMovimentoConfirmado, previaDepoisDaConfirmac
 import { mergeInventory } from '@/lib/omni/inventorySync';
 import { useInventoryStore } from '@/stores/useInventoryStore';
 import { mergeIncomingCharacters, pickNewestPerCharacter, stampLocalChanges, withStamps } from '@/lib/charSyncStamps';
+import { saveCharactersSliceSecurely } from '@/lib/combat/actionRequests.functions';
 import { mergeSyncedProfiles, projectProfilesForSync } from '@/lib/profileSync';
 import { projectBossesForPlayers } from '@/lib/bosses';
 import { useEffect } from 'react';
@@ -610,6 +611,8 @@ export function useMultiplayerSync() {
     worldBus.on('broadcast', { event: 'slice' }, ({ payload }) => {
       const p = payload as { clientId?: string; slice?: WorldSlice; data?: unknown } | null;
       if (!p || p.clientId === clientId || !p.slice || p.slice === 'worldBossesMaster') return;
+      // Personagens só chegam pelo Postgres depois da RPC validar a gravação.
+      if (hasWorkspaceCloud && p.slice === 'characters') return;
       // Em nuvem, fatias administrativas chegam pelo Postgres, onde RLS
       // valida quem gravou. Um broadcast aberto não autentica o emissor.
       if (hasWorkspaceCloud && isMasterControlledWorldSlice(p.slice)) return;
@@ -870,11 +873,41 @@ export function useMultiplayerSync() {
           return;
         }
         if (slice !== 'characters' || !Array.isArray(json)) { void save(json); return; }
-        // Fichas: junta com a cópia da nuvem antes de salvar, ficha a ficha pela
-        // edição mais recente — uma tela com cópia antiga nunca apaga dados novos.
-        void supabase.from('realtime_world').select('data').eq('slice', 'characters').maybeSingle().then(({ data: row }) => {
-          const cloud = Array.isArray(row?.data) ? (row!.data as never[]) : [];
-          void save(pickNewestPerCharacter(json as never[], cloud) as unknown as Json);
+        // A RPC usa auth.uid(), o vínculo privado e CAS no banco; a cópia local
+        // nunca grava diretamente a fatia nem a transmite por broadcast aberto.
+        void (async () => {
+          const readLatest = async () => supabase.from('realtime_world')
+            .select('data,revision').eq('slice', 'characters').maybeSingle();
+          const initial = await readLatest();
+          if (initial.error) {
+            console.warn('[sync] falha ao carregar revisão de personagens:', initial.error.message);
+            return;
+          }
+          let currentData = Array.isArray(initial.data?.data) ? initial.data.data as never[] : [];
+          let currentRevision = initial.data?.revision ?? 0;
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const requestId = crypto.randomUUID();
+            const characters = pickNewestPerCharacter(json as never[], currentData) as unknown as Record<string, unknown>[];
+            const result = await saveCharactersSliceSecurely({
+              data: { requestId, expectedRevision: currentRevision, characters },
+            }) as unknown as
+              | { ok: true; revision: number; data: Json; duplicate: boolean }
+              | { ok: false; code: string; message: string };
+            if (result.ok) return;
+            if (result.code !== 'stale' || attempt > 0) {
+              console.warn('[sync] gravação segura de personagens recusada:', result.message);
+              return;
+            }
+            const latest = await readLatest();
+            if (latest.error) {
+              console.warn('[sync] falha ao atualizar revisão de personagens:', latest.error.message);
+              return;
+            }
+            currentData = Array.isArray(latest.data?.data) ? latest.data.data as never[] : [];
+            currentRevision = latest.data?.revision ?? 0;
+          }
+        })().catch((error: unknown) => {
+          console.warn('[sync] falha ao salvar personagens pela RPC segura:', error);
         });
       }, 400));
     };
@@ -884,6 +917,10 @@ export function useMultiplayerSync() {
         if (a.slice === 'worldBossesMaster') return socket;
         if (a.slice) {
           if (hasWorkspaceCloud && !podePublicarWorldSlice(useRoleStore.getState().role, a.slice)) return socket;
+          if (hasWorkspaceCloud && a.slice === 'characters') {
+            persistSlice(a.slice, a.data);
+            return socket;
+          }
           let outgoing = a;
           if (a.slice === 'worldBosses') {
             if (useRoleStore.getState().role === 'MASTER') persistSlice('worldBossesMaster', a.data);
@@ -1004,7 +1041,9 @@ export function useMultiplayerSync() {
       };
 
       // Slices baseadas em arrays-por-id: faz merge local e aplica.
-      const mergedChars = mergeArr(preLocal.chars as never[], world.characters);
+      const mergedChars = hasWorkspaceCloud
+        ? preLocal.chars
+        : mergeArr(preLocal.chars as never[], world.characters);
       const mergedProfiles = mergeArr(preLocal.profiles as never[], world.profiles);
       const mergedItems = mergeArr(preLocal.items as never[], world.items);
       const mergedEvents = mergeArr(preLocal.events as never[], world.calendar);
@@ -1084,6 +1123,7 @@ export function useMultiplayerSync() {
 
     const onUpdate = ({ slice, data }: { slice: WorldSlice; data: unknown }) => {
       if (slice === 'worldBossesMaster') return;
+      if (hasWorkspaceCloud && slice === 'characters') return;
       if (hasWorkspaceCloud && isMasterControlledWorldSlice(slice)) return;
       applyRemote(slice, data);
     };
@@ -1106,6 +1146,14 @@ export function useMultiplayerSync() {
       if (isMapSceneSync(data?.data) && !sameMapScene(data.data, local)) applyRemote('mapScene', data.data);
       if (!isMapSceneSync(data?.data) && hasMapContent(local)) void publishMapSceneToCloud(local);
     });
+
+    const cloudCharactersChannel = supabase
+      .channel('secure-shared-characters')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'realtime_world', filter: 'slice=eq.characters' }, (payload) => {
+        const next = (payload.new as { data?: unknown } | null)?.data;
+        if (Array.isArray(next)) applyRemote('characters', next);
+      })
+      .subscribe();
 
     const cloudMapChannel = supabase
       .channel('shared-map-scene')
@@ -1539,6 +1587,7 @@ export function useMultiplayerSync() {
       socket.off('connect', onConnect);
       (socket as unknown as { emit: typeof socket.emit }).emit = origEmit as typeof socket.emit;
       void supabase.removeChannel(cloudMapChannel);
+      void supabase.removeChannel(cloudCharactersChannel);
       void supabase.removeChannel(cloudAssetChannel);
       void supabase.removeChannel(cloudMasterBossChannel);
       void supabase.removeChannel(cloudMasterWorldChannel);

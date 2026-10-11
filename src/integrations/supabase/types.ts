@@ -59,16 +59,19 @@ export type Database = {
       realtime_world: {
         Row: {
           data: Json
+          revision: number
           slice: string
           updated_at: string
         }
         Insert: {
           data?: Json
+          revision?: number
           slice: string
           updated_at?: string
         }
         Update: {
           data?: Json
+          revision?: number
           slice?: string
           updated_at?: string
         }
@@ -106,6 +109,14 @@ export type Database = {
         Returns: boolean
       }
       list_masters: { Args: never; Returns: string[] }
+      write_owned_characters_slice: {
+        Args: {
+          p_characters: Json
+          p_expected_revision: number
+          p_request_id: string
+        }
+        Returns: Json
+      }
       set_master: {
         Args: { _make: boolean; _target: string }
         Returns: undefined

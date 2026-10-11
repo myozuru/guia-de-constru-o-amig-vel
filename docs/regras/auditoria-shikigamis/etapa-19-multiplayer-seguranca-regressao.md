@@ -1,8 +1,8 @@
 # Etapa 19 — auditoria inicial de multiplayer e segurança
 
-**Data:** 10/10/2026  
+**Data:** 11/10/2026  
 **Branch revisada:** `main`  
-**Commit revisado:** `7d694b02727fb71977e6e9adca7657a18696866d`  
+**Commit-base revisado:** `a512391`  
 **Status:** em andamento; esta auditoria não conclui a etapa.
 
 ## Escopo executado
@@ -21,8 +21,11 @@
   autenticada.
 - `supabase/migrations/20261009010000_restrict_master_world_slices.sql`
   restringe no banco as fatias `worldBosses`, `worldBossesMaster`, `worldMap`,
-  `chronos` e `omniEntidades`. As fatias `characters` e `map` permanecem fora
-  dessa lista e, portanto, aceitam gravações de qualquer conta autenticada.
+  `chronos` e `omniEntidades`. A fatia `mapScene` continua aceitando gravações
+  de qualquer conta autenticada; ela reúne tokens e elementos do mapa.
+- A migração `20261011010000_secure_character_slice_writes.sql` preparada nesta
+  etapa bloqueia gravações diretas de `characters`; sua aplicação ao projeto
+  Supabase ainda não foi verificada.
 - `src/hooks/useMultiplayerSync.ts` consulta
   `podePublicarWorldSlice(useRoleStore.getState().role, slice)` antes de
   publicar certas fatias. Essa checagem ocorre no cliente e não substitui a
@@ -30,26 +33,48 @@
 - `src/lib/controlador/aprovacao.functions.ts` valida identidade, papel,
   propriedade e revisão por Server Functions autenticadas.
 - `src/lib/combat/actionRequests.functions.ts` valida o vínculo persistido em
-  `combat_character_owners` ao receber uma intenção. Esse caminho não governa
-  as gravações diretas das fatias de personagens e mapa.
+  `combat_character_owners` ao receber uma intenção e agora encaminha a escrita
+  autenticada de `characters`. A gravação de `mapScene` segue em outro caminho.
 - `src/test/worldSliceAuthorization.test.ts` e
   `src/test/combatActionProtocol.test.ts` cobrem regras puras; não exercitam
   políticas RLS nem a sincronização real.
 
 ## Achado S19-01 — gravação de personagens e mapa sem autorização por dono
 
-**Severidade:** alta. Uma conta autenticada pode enviar uma gravação direta
-para as fatias compartilhadas `characters` e `map`, inclusive alterando dados
-de personagens e tokens que não lhe pertencem. A tabela de proprietários e a
-fila segura de intenções protegem alguns caminhos específicos, mas a política
-genérica de sincronização ainda não verifica a identidade do dono nem a
-transição dos valores.
+**Severidade:** alta. Antes do incremento desta rodada, uma conta autenticada
+podia enviar gravações diretas das fichas e do mapa, inclusive alterando dados
+de personagens e tokens alheios. A fatia `characters` agora tem um caminho
+transacional preparado; `mapScene` continua sem validação por proprietário.
 
-Não é seguro resolver isso apenas bloqueando essas fatias para jogadores: eles
-precisam sincronizar alterações próprias e controlar suas invocações. A correção
-precisa introduzir um caminho de escrita confiável que valide dono, entidade,
-operação, versão e idempotência, depois restringir as gravações diretas sem
-interromper os fluxos legítimos.
+Não é seguro resolver o achado apenas bloqueando essas fatias para jogadores:
+eles precisam sincronizar alterações próprias e controlar suas invocações. A
+correção precisa validar dono, entidade, operação, versão e idempotência antes
+de restringir cada caminho direto.
+
+## Mitigação S19-03 — fatia `characters` com CAS no banco
+
+`write_owned_characters_slice` é uma RPC `SECURITY DEFINER` que deriva a conta
+de `auth.uid()` e o papel com `has_role`; nunca confia em `profileId` ou em um
+papel enviado no corpo. A transação serializa gravações, compara a revisão,
+deduplica `requestId` e, para jogadores, substitui apenas as fichas que já
+estão vinculadas a essa conta em `combat_character_owners`. Jogadores não
+podem criar nem remover fichas pela fatia; o Mestre pode administrar a lista.
+Na ficha do jogador, um modelo de invocação precisa coincidir com a versão e o
+snapshot registrados em `invocation_approval_requests`; a única exceção de
+estado é `hpAtual`. O banco usa a decisão registrada pelo Mestre, protege os
+limites de invocações e impede remover modelos pendentes, perdidos ou ainda
+referenciados por uma instância ativa.
+
+A política RLS bloqueia `INSERT`/`UPDATE` diretos na fatia `characters`. O
+cliente chama uma Server Function autenticada, não publica personagens em
+broadcast aberto e aplica atualizações recebidas pelo canal Postgres Changes.
+Em conflito de revisão, busca o estado atual e tenta mesclar uma vez.
+
+Esta mitigação não valida as regras de cada operação de combate no servidor e
+não protege `mapScene`, que ainda contém tokens e aceita gravação direta. A
+transição de PV/economia das instâncias também continua dependendo da lógica
+do cliente. A etapa permanece aberta até esses fluxos e o mapa terem caminhos
+autoritativos e ser possível verificar a migração no banco de destino.
 
 ## Mitigação S19-02 — mesclagem concorrente de instâncias
 
@@ -66,7 +91,7 @@ semântica. A mesclagem também roda no cliente e não prova propriedade, não i
 escritas diretas de terceiros e não substitui a validação autoritativa com
 compare-and-swap no servidor. O achado S19-01 permanece aberto.
 
-## Verificação local sem Supabase
+## Verificações anteriores sem Supabase
 
 Comando executado:
 
@@ -86,19 +111,28 @@ Verificação incremental da S19-02:
 
 Essas verificações foram executadas localmente, offline e sem Supabase.
 
+## Verificação deste incremento sem Supabase
+
+- `npx vitest run src/test/ownedCharacterSlice.test.ts src/test/charSyncStamps.test.ts src/test/combatActionProtocol.test.ts src/test/worldSliceAuthorization.test.ts src/test/omniInventorySync.test.ts`: **5 arquivos e 48 testes aprovados**.
+- `npx tsc --noEmit --pretty false`: passou.
+- `npm run build`: passou.
+- `git diff --check`: passou.
+- Os testes cobrem a regra pura de propriedade, Mestre e revisão. Não conectam
+  ao Supabase; a migração SQL ainda precisa ser aplicada e validada no ambiente.
+
 ## Próximo incremento
 
-Desenhar e implementar um fluxo de escrita autenticado para estado de
-invocações, incluindo autorização por identidade autenticada e vínculo de
-propriedade, revisão concorrente e `requestId` idempotente. Adicionar testes
-unitários offline para as decisões de autorização e integração isolada para o
-persistidor. Só então estreitar as políticas RLS das fatias compartilhadas.
+Implementar a escrita autenticada de `mapScene`, validando proprietário do
+token, entidade/operação, revisão e `requestId` sem bloquear movimento legítimo
+de personagens e Shikigami. Em seguida, restringir a escrita direta e validar
+a migração no ambiente Supabase.
 
 ## Estado das etapas
 
 - Etapa 18: parcialmente concluída; recuperação manual foi publicada, mas
   reinvocação e Hordas ainda aguardam regras pendentes.
-- Etapa 19: iniciada; achado S19-01 registrado e ainda sem correção de código.
+- Etapa 19: parcial; a rota segura e a política RLS de `characters` foram
+  preparadas; `mapScene` e a validação no banco continuam pendentes.
 - Etapa 20: pendente.
 
 Assim, há **3 etapas numéricas abertas** (18, 19 e 20); a etapa 18 permanece
