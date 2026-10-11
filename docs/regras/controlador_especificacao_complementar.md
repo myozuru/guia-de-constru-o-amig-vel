@@ -59,6 +59,8 @@ A ficha de criação de **cada Shikigami** deve oferecer um campo livre para def
 
 **Regra confirmada em 2026-10-11 — dissipação voluntária:** quando a invocação é dissipada por escolha do Controlador ou Mestre, retirar do relógio global o tempo restante associado àquela invocação. Se essa retirada levaria o saldo abaixo de 10 segundos, o relógio fica em 10 segundos. Não retirar tempo já consumido.
 
+**Reinvocação conforme o texto-base e as decisões do usuário:** após dissipação voluntária, o Controlador pode trazer o Shikigami de volta sem pagar o custo de PE novamente, mantendo os PV que tinha ao ser dissipado. Após dissipação forçada a 0 PV, uma nova invocação cobra o custo de PE configurado; o Shikigami materializa com 0 PV e Caído, e um descanso longo restaura 100% dos PV. Cada nova materialização acrescenta novamente ao relógio global o tempo configurado na ficha. Em qualquer caso, o Shikigami espera seu próximo turno na iniciativa para agir.
+
 **Regra confirmada em 2026-10-11 — 0 PV e derrota:** chegar a **0 PV não causa perda permanente**. A ficha continua no catálogo e pode ser invocada com 0 PV; materializa Caída. Ao atingir **−100% dos PV máximos** (por exemplo, −20 PV para uma invocação com PV máximo 20), o Mestre precisa decidir antes de permitir nova materialização. A perda permanente não ocorre automaticamente. A duração e os efeitos da incapacitação ainda serão definidos; não inventar uma duração provisória.
 
 **Regra confirmada em 2026-10-11 — recuperação:** a invocação recupera **100% dos PV após um descanso longo**. O tratamento de cura parcial, retorno à ação e duração da incapacitação fica pendente de revisão; não aplicar a regra anterior de levantar com Ação de Movimento até essa revisão.
@@ -67,14 +69,14 @@ A ficha de criação de **cada Shikigami** deve oferecer um campo livre para def
 
 **Regra confirmada em 2026-10-11 — Hordas:** uma Horda adiciona tempo como **uma única entidade** ao relógio global, sem cronômetros por integrante. A Horda compartilha um total geral de PV; não há uma vida separada para cada integrante.
 
-**Pendências:** duração/efeitos da incapacitação; valor adicional de PE para integrante de Primeiro Grau sob líder Especial; implementação e interações de Hordas (incluindo perda de membros, dano em área, tamanho e fim do combate). O limite de Hordas ativas é arredondado para baixo. Invocar continua como Ação Livre e cada nova materialização usa o custo de PE configurado na ficha.
+**Pendências:** duração/efeitos da incapacitação; valor adicional de PE para integrante de Primeiro Grau sob líder Especial; implementação e interações de Hordas (incluindo perda de membros, dano em área, tamanho e fim do combate). O limite de Hordas ativas é arredondado para baixo. Invocar continua como Ação Livre.
 
 ### 10. Economia de ações independente
 Cada Shikigami terá **seu próprio conjunto de ações e recursos**, definidos na sua ficha no momento da criação, em vez de compartilhar as quantidades de ações do jogador. Eles são entidades autônomas em combate, funcionando quase como personagens individuais, mas mantendo vínculo com o proprietário e com o relógio global conforme a decisão anterior.
 
 **Regra confirmada em 2026-10-11 — entrada na iniciativa:** depois de materializado, o Shikigami espera seu próximo turno na ordem de iniciativa para agir; não recebe uma ação imediata no momento da invocação.
 
-**Pendência:** definir quando as ações e os recursos próprios do Shikigami se renovam durante o combate.
+
 
 **Revisão obrigatória:** a implementação provisória que debita `actionsCurrent` e `bonusActionsCurrent` do Controlador para ações da invocação não atende a esta decisão; revisar antes de afirmar que o combate está concluído.
 
