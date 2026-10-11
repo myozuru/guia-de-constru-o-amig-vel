@@ -4,6 +4,10 @@
 **Branch de entrega:** `main`
 **Escopo:** transições de PV das instâncias de invocação no mapa.
 
+## Atualização de regra — 2026-10-11
+
+A decisão atual substitui a regra de cura parcial e levantamento por Ação de Movimento registrada abaixo: a invocação permanece disponível com 0 PV e retorna com 100% dos PV após descanso longo. Duração e efeitos da incapacitação continuam pendentes. Perda permanente só pode ocorrer a −100% dos PV máximos e é decidida pelo Mestre; o comportamento já implementado precisa ser revisado antes de dar esta parte por concluída.
+
 ## Regras cobertas
 
 - A instância continua no mapa e como alvo quando chega a 0 PV.

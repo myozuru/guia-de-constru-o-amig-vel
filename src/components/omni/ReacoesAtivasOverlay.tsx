@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRoleStore } from '@/stores/useRoleStore';
-import { continuarSemReacoesPendentes, podeVerOfertaReacao, passarOfertaRemota, responderOfertaRemota, responderReacaoAtiva, useReacoesAtivasStore } from '@/lib/omni/reacoesAtivas';
+import { continuarSemReacoesPendentes, controlarPrazoReacoesAtivas, podeVerOfertaReacao, responderOfertaRemota, responderReacaoAtiva, useReacoesAtivasStore } from '@/lib/omni/reacoesAtivas';
 import { useProfileStore } from '@/stores/useProfileStore';
 import { useCharacterStore } from '@/stores/useCharacterStore';
 import { SpellApplyDialog } from '@/components/fichas/SpellApplyDialog';
@@ -17,7 +17,7 @@ interface ReacaoManualEmCurso {
   remoto?: { perfilId: string; clienteOrigem: string };
 }
 
-function TempoReacao({ expiresAt }: { expiresAt?: number }) {
+function TempoReacao({ expiresAt, pausada, tempoRestanteMs }: { expiresAt?: number; pausada?: boolean; tempoRestanteMs?: number }) {
   const [seconds, setSeconds] = useState(() => expiresAt === undefined ? 0 : Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
   useEffect(() => {
     if (expiresAt === undefined) return;
@@ -26,6 +26,7 @@ function TempoReacao({ expiresAt }: { expiresAt?: number }) {
     const timer = window.setInterval(update, 200);
     return () => window.clearInterval(timer);
   }, [expiresAt]);
+  if (pausada) return <p className="text-xs font-semibold text-amber-600">Reação pausada pelo Mestre · {Math.ceil((tempoRestanteMs ?? 0) / 1000)}s restantes</p>;
   if (expiresAt === undefined) return null;
   return <p className="text-xs font-semibold tabular-nums text-amber-600">Tempo para reagir: {seconds}s</p>;
 }
@@ -40,6 +41,7 @@ export function ReacoesAtivasOverlay() {
   // precisa mudar de lado enquanto ela estiver aberta para continuar clicável.
   const bandejaAberta = useDice3DStore(s => s.enabled && s.visible && s.current?.layout !== 'test-request');
   const [reacaoManual, setReacaoManual] = useState<ReacaoManualEmCurso | null>(null);
+  const [segundosAdicionais, setSegundosAdicionais] = useState('10');
   useEffect(() => {
     if (!reacaoManual) return;
     const janelaAtiva = reacaoManual.remoto
@@ -48,6 +50,17 @@ export function ReacoesAtivasOverlay() {
     if (!janelaAtiva) setReacaoManual(null);
   }, [j?.id, remotas, reacaoManual]);
   if (!j && remotas.length === 0) return null;
+  const algumaPausada = !!j?.pausada || remotas.some(r => r.pausada);
+  const controlesMestre = role === 'MASTER' ? <section className="space-y-2 rounded border border-amber-500/50 p-2" aria-label="Controles do Mestre para reações">
+    <p className="text-xs font-semibold">Controle global das reações</p>
+    <div className="flex gap-2">
+      <input aria-label="Segundos adicionais para todas as reações" className="w-20 rounded border bg-background px-2 py-1 text-sm" type="number" min="1" step="1" value={segundosAdicionais} onChange={event => setSegundosAdicionais(event.target.value)} />
+      <button className="rounded border px-2 py-1 text-xs" onClick={() => controlarPrazoReacoesAtivas('estender', Number(segundosAdicionais))}>Adicionar segundos</button>
+    </div>
+    <button className="rounded border px-2 py-1 text-xs" onClick={() => controlarPrazoReacoesAtivas(algumaPausada ? 'retomar' : 'pausar')}>
+      {algumaPausada ? 'Retomar todas as reações' : 'Pausar todas as reações'}
+    </button>
+  </section> : null;
   const ofertasLocais = j?.ofertas.filter(o => podeVerOfertaReacao(o, perfilId)) ?? [];
   const alvoDaMagia = (spell: Spell, evento: EventoReacaoAtiva, sourceCharId: string) => {
     if (spell.spellType === 'damage' || spell.spellType === 'condition') return evento.origemId;
@@ -79,9 +92,9 @@ export function ReacoesAtivasOverlay() {
   return <>
     {j && <div role="dialog" aria-label="Reação OMNI" className={cn('fixed bottom-4 z-[10000] w-80 rounded-lg border border-primary bg-background p-4 shadow-xl space-y-3', bandejaAberta ? 'left-4' : 'right-4')}>
       <p className="font-bold">Janela de reação</p>
-      <p className="text-xs">{ofertasLocais.length ? 'O cronômetro de combate está pausado. Escolha uma reação ou passe.' : 'Aguardando a resposta do controlador da ficha (jogador ou mestre).'}</p>
-      {j.expiresAt === undefined && <p className="text-xs text-muted-foreground">Sem prazo automático. O Mestre pode passar para continuar.</p>}
-      <TempoReacao expiresAt={j.expiresAt} />
+      <p className="text-xs">{j.pausada ? 'O Mestre pausou todas as reações.' : ofertasLocais.length ? 'O cronômetro de combate está pausado. Escolha uma reação ou passe.' : 'Aguardando a resposta do controlador da ficha (jogador ou mestre).'}</p>
+      <TempoReacao expiresAt={j.expiresAt} pausada={j.pausada} tempoRestanteMs={j.tempoRestanteMs} />
+      {controlesMestre}
       {opcoesFeitico(j.id, j.evento)}
       {ofertasLocais.map(o => <button key={o.id} disabled={j.busy} className="block w-full rounded border p-2 text-left disabled:opacity-50" onClick={() => responderReacaoAtiva(j.id, o.id)}>
         {o.fonte === 'invocacao'
@@ -93,9 +106,9 @@ export function ReacoesAtivasOverlay() {
       <button disabled={j.busy} className="rounded border px-3 py-1" onClick={() => ofertasLocais.length ? responderReacaoAtiva(j.id) : continuarSemReacoesPendentes(j.id)}>Passar e continuar</button>
     </div>}
     {remotas.map(r => <div key={r.janelaId} role="dialog" aria-label="Reação OMNI" className={cn('fixed bottom-4 z-[10000] w-80 rounded-lg border border-primary bg-background p-4 shadow-xl space-y-3', bandejaAberta ? 'left-[21rem]' : 'left-4')}>
-      <p className="font-bold">Reação disponível</p><p className="text-xs">O cronômetro de combate está pausado enquanto você decide.</p>
-      {r.expiresAt === undefined && <p className="text-xs text-muted-foreground">Sem prazo automático; o Mestre também pode resolver esta reação.</p>}
-      <TempoReacao expiresAt={r.expiresAt} />
+      <p className="font-bold">Reação disponível</p><p className="text-xs">{r.pausada ? 'O Mestre pausou todas as reações.' : 'O cronômetro de combate está pausado enquanto você decide.'}</p>
+      <TempoReacao expiresAt={r.expiresAt} pausada={r.pausada} tempoRestanteMs={r.tempoRestanteMs} />
+      {!j && remotas[0]?.janelaId === r.janelaId && controlesMestre}
       {opcoesFeitico(r.janelaId, r.evento, { perfilId: r.perfilId, clienteOrigem: r.clienteOrigem })}
       {r.ofertas.map(o => <button key={o.id} disabled={r.busy} className="block w-full rounded border p-2 text-left disabled:opacity-50" onClick={() => responderOfertaRemota(r.janelaId, o.id, r.perfilId, r.clienteOrigem)}>
         {o.fonte === 'invocacao'

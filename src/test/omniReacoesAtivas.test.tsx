@@ -15,7 +15,7 @@ import { useInventoryStore } from '@/stores/useInventoryStore';
 import { useMapStore } from '@/stores/useMapStore';
 import { useCombatStore } from '@/stores/useCombatStore';
 import { useReactionStore } from '@/stores/useReactionStore';
-import { abrirJanelaReacaoAtiva, ofertasReacaoAtiva, receberRespostaRemota, receberSondagemRemota, useReacoesAtivasStore, responderReacaoAtiva, responderOfertaRemota, cancelarJanelasReacoesAtivas, PRAZO_SONDAGEM_REACAO_MS } from '@/lib/omni/reacoesAtivas';
+import { abrirJanelaReacaoAtiva, ofertasReacaoAtiva, receberRespostaRemota, receberSondagemRemota, receberControlePrazoReacoes, useReacoesAtivasStore, responderReacaoAtiva, responderOfertaRemota, cancelarJanelasReacoesAtivas, controlarPrazoReacoesAtivas, PRAZO_ESCOLHA_REACAO_MS, PRAZO_SONDAGEM_REACAO_MS } from '@/lib/omni/reacoesAtivas';
 import { ReacoesAtivasOverlay } from '@/components/omni/ReacoesAtivasOverlay';
 import { EditorAcoesAtivas } from '@/components/omni/EditorAcoesAtivas';
 import { PendingMoveOverlay } from '@/components/mapa/ui/PendingMoveOverlay';
@@ -316,6 +316,54 @@ describe('controlador remoto e confirmação de entrega', () => {
       expect(useCombatStore.getState().getTurnRemaining()).toBeCloseTo(remaining);
     } finally {vi.useRealTimers();}
   });
+  it('Mestre estende e pausa globalmente as reações; jogadores não podem controlar o prazo', async () => {
+    vi.useFakeTimers();
+    const enviados: CustomEvent[] = [];
+    const capturar = (e: Event) => enviados.push(e as CustomEvent);
+    window.addEventListener('omni-reaction:send', capturar);
+    try {
+      add();
+      const p = abrirJanelaReacaoAtiva(evento);
+      const inicio = useReacoesAtivasStore.getState().janelas[0].expiresAt!;
+      render(<ReacoesAtivasOverlay />);
+      expect(screen.getByLabelText('Controles do Mestre para reações')).toBeTruthy();
+      fireEvent.click(screen.getByText('Adicionar segundos'));
+      expect(useReacoesAtivasStore.getState().janelas[0].expiresAt).toBe(inicio + 10000);
+      fireEvent.click(screen.getByText('Pausar todas as reações'));
+      expect(useReacoesAtivasStore.getState().janelas[0].pausada).toBe(true);
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(useReacoesAtivasStore.getState().janelas).toHaveLength(1);
+      comoTela({ role: 'PLAYER', profileId: 'perfil-u' });
+      expect(controlarPrazoReacoesAtivas('retomar')).toBe(false);
+      comoTela({ role: 'MASTER', profileId: null });
+      fireEvent.click(screen.getByText('Retomar todas as reações'));
+      const retomada = useReacoesAtivasStore.getState().janelas[0].expiresAt!;
+      expect(retomada - Date.now()).toBe(PRAZO_ESCOLHA_REACAO_MS + 10000);
+      expect(enviados.some(e => e.detail.tipo === 'controle_prazo' && e.detail.papelRemetente === 'MASTER')).toBe(true);
+      await vi.advanceTimersByTimeAsync(PRAZO_ESCOLHA_REACAO_MS + 10000);
+      expect(await p).toEqual({ cancelado: false, defesaBonus: 0, testeBonus: 0 });
+      expect(useReacoesAtivasStore.getState().janelas).toHaveLength(0);
+    } finally {
+      window.removeEventListener('omni-reaction:send', capturar);
+      vi.useRealTimers();
+    }
+  });
+  it('sessões de jogador aceitam controles globais marcados como enviados pelo Mestre', () => {
+    add();
+    abrirJanelaReacaoAtiva(evento);
+    const prazoOriginal = useReacoesAtivasStore.getState().janelas[0].expiresAt!;
+    comoTela({ role: 'PLAYER', profileId: 'perfil-u' });
+    receberControlePrazoReacoes({ acao: 'pausar', papelRemetente: 'PLAYER' });
+    expect(useReacoesAtivasStore.getState().janelas[0].pausada).not.toBe(true);
+    receberControlePrazoReacoes({ acao: 'pausar', papelRemetente: 'MASTER' });
+    expect(useReacoesAtivasStore.getState().janelas[0]).toMatchObject({ pausada: true, expiresAt: undefined });
+    receberControlePrazoReacoes({ acao: 'estender', segundos: 5, papelRemetente: 'MASTER' });
+    const restante = useReacoesAtivasStore.getState().janelas[0].tempoRestanteMs!;
+    expect(restante).toBeGreaterThan(0);
+    expect(restante).toBeLessThanOrEqual(prazoOriginal - Date.now() + 5000);
+    receberControlePrazoReacoes({ acao: 'retomar', papelRemetente: 'MASTER' });
+    expect(useReacoesAtivasStore.getState().janelas[0].expiresAt).toBe(Date.now() + restante);
+  });
   it('confirmação mantém a janela ativa; continuar libera uma sessão que parou de responder', async () => {
     const ev=mesaRemota();vi.useFakeTimers();
     try {
@@ -404,7 +452,7 @@ describe('novos momentos de reação', () => {
     const dano = useCharacterStore.getState().applyDamage('u', 8, 'DCO', { attackerId: 'a' }).then(() => { concluiu = true; });
     await waitFor(() => expect(useReacoesAtivasStore.getState().janelas[0]?.ofertas[0]?.fonte).toBe('invocacao'));
     const janela = useReacoesAtivasStore.getState().janelas[0];
-    expect(janela.expiresAt).toBeUndefined();
+    expect(janela.expiresAt).toBeGreaterThan(Date.now());
     expect(pegarFicha('u').hpCurrent).toBe(50);
     expect(useCombatStore.getState().reactionPauseIds).toContain('omni-active:' + janela.id);
     await responderReacaoAtiva(janela.id, janela.ofertas[0].id);
@@ -416,6 +464,19 @@ describe('novos momentos de reação', () => {
     expect(pegarFicha('u').actionsCurrent).toBe(ownerAntes.actionsCurrent);
     expect(pegarFicha('u').instanciasInvocacao?.[0].economiaAcoes?.reacao?.atual).toBe(0);
     expect(useCombatStore.getState().reactionPauseIds).not.toContain('omni-active:' + janela.id);
+  });
+  it('reação de Shikigami passa automaticamente quando o prazo de 12 segundos acaba', async () => {
+    vi.useFakeTimers();
+    try {
+      adicionarShikigamiReativo();
+      const promessa = abrirJanelaReacaoAtiva({ gatilho: 'quando_sofrer_dano', origemId: 'a', protegidoId: 'u', dano: 8 });
+      const janela = useReacoesAtivasStore.getState().janelas[0];
+      expect(janela.ofertas[0]?.fonte).toBe('invocacao');
+      expect(janela.expiresAt).toBe(Date.now() + PRAZO_ESCOLHA_REACAO_MS);
+      await vi.advanceTimersByTimeAsync(PRAZO_ESCOLHA_REACAO_MS);
+      expect(await promessa).toEqual({ cancelado: false, defesaBonus: 0, testeBonus: 0 });
+      expect(useReacoesAtivasStore.getState().janelas).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
   });
   it('passar a reação de Shikigami não gasta economia própria e o dano continua', async () => {
     adicionarShikigamiReativo();
@@ -429,7 +490,7 @@ describe('novos momentos de reação', () => {
     expect(pegarFicha('u').hpCurrent).toBe(42);
     expect(pegarFicha('u').instanciasInvocacao?.[0].economiaAcoes?.reacao?.atual).toBe(1);
   });
-  it('resposta remota de Shikigami não expira e remove a cópia visível ao Mestre após executar', async () => {
+  it('resposta remota de Shikigami recebe prazo automático e remove a cópia visível ao Mestre após executar', async () => {
     vi.stubGlobal('__worldBus', { send: vi.fn() });
     adicionarShikigamiReativo(false);
     useCharacterStore.getState().updateCharacter('u', { profileId: 'perfil-u' });
@@ -444,7 +505,7 @@ describe('novos momentos de reação', () => {
       comoTela({ role: 'PLAYER', profileId: 'perfil-u' });
       receberSondagemRemota({ ...sondagem, clienteOrigem: 'origem' });
       const ofertaRemota = useReacoesAtivasStore.getState().ofertasRemotas.find(item => item.janelaId === janela.id)!;
-      expect(ofertaRemota.expiresAt).toBeUndefined();
+      expect(ofertaRemota.expiresAt).toBeGreaterThan(Date.now());
       expect(janela.ofertas[0].id).toBe(ofertaRemota.ofertas[0].id);
       forcarDados(20, 4);
       await responderOfertaRemota(janela.id, ofertaRemota.ofertas[0].id, 'perfil-u', 'origem');
@@ -453,7 +514,8 @@ describe('novos momentos de reação', () => {
       expect(resposta.ofertaId).toBe(ofertaRemota.ofertas[0].id);
       comoTela({ role: 'MASTER', profileId: null });
       await receberRespostaRemota(processando, 'origem');
-      expect(useReacoesAtivasStore.getState().janelas[0]).toMatchObject({ busy: true, expiresAt: undefined });
+      expect(useReacoesAtivasStore.getState().janelas[0]).toMatchObject({ busy: true });
+      expect(useReacoesAtivasStore.getState().janelas[0].expiresAt).toBeGreaterThan(Date.now());
       await receberRespostaRemota(resposta, 'origem');
       expect(await promessa).toEqual({ cancelado: false, defesaBonus: 0, testeBonus: 0 });
       expect(useReacoesAtivasStore.getState().janelas).toHaveLength(0);

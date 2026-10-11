@@ -1,5 +1,7 @@
 # Etapa 14 — auxílio, cura, bônus e características
 
+> **Atualização de regra — 2026-10-11:** a descrição abaixo de cura parcial sem levantar fica pendente de revisão. A decisão atual é restaurar 100% dos PV do Shikigami no descanso longo, mantendo duração e efeitos da incapacitação como pendência.
+
 **Data:** 10/10/2026
 
 **Status:** implementada e validada localmente.

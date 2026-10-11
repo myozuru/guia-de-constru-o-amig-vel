@@ -32,10 +32,10 @@ Permitir **automações de combate configuradas no OMNI**, além das que ocorrer
 Permitir ações e características personalizadas com as keys, fórmulas, condições e gatilhos do OMNI, sem restrições artificiais do editor além das validações técnicas e da segurança do motor. Limites do livro são exibidos como avisos, salvo quando o usuário determinar uma proibição específica.
 
 ### 5. Recuperação e perda de invocações
-**A resolução da perda é decisão do Controlador ou do Mestre**, não uma remoção definitiva automática. Quando uma invocação chegar a 0 PV ou ocorrer situação com risco de perda, o sistema deve permitir a decisão do responsável. Não excluir permanentemente a entrada da biblioteca sem escolha explícita.
+**O Mestre decide a resolução da perda.** Chegar a 0 PV não remove a invocação permanentemente. A perda permanente só pode ser decidida quando os PV atingirem −100% dos PV máximos; essa consequência não é automática e depende da decisão do Mestre. Não excluir a ficha da biblioteca sem essa decisão.
 
 ### 6. Reações dos Shikigamis
-Ao ocorrer gatilho válido de reação, abrir **prompt para o jogador Controlador**, pausando o combate/relógio durante a resolução. Integrar às janelas de reação do sistema em vez de criar uma lógica paralela. O Mestre conserva controle total conforme a decisão 7.
+Ao ocorrer gatilho válido de reação, abrir **prompt para o jogador Controlador**, pausando o combate/relógio durante a resolução. Integrar às janelas de reação do sistema em vez de criar uma lógica paralela. O Mestre conserva controle total conforme a decisão 7. As ofertas passam automaticamente quando o prazo termina.
 
 ### 7. Permissões do Mestre
 O **Mestre possui controle e edição total sobre qualquer Shikigami**, independentemente de seu proprietário. Os jogadores controlam suas próprias invocações de acordo com as permissões usuais.
@@ -48,25 +48,29 @@ O **Mestre possui controle e edição total sobre qualquer Shikigami**, independ
 ### 8. Duas formas de controle individual
 Cada Shikigami deve permitir **ambas as interfaces**: (a) selecionar seu token e assumir o controle pela HUD própria da invocação; (b) selecioná-lo e enviar comandos pela HUD do Controlador. O controle e a seleção são individuais por Shikigami, mesmo quando vários pertencem ao mesmo jogador.
 
-### 9. Cronômetro individual e relógio global
-A ficha de criação de **cada Shikigami** deve oferecer um campo configurável de **tempo adicional**. No combate, o tempo de cada Shikigami deve **ser acrescido ao relógio global do jogador Controlador**, em vez de funcionar como um relógio isolado independente do cronômetro principal. Deve existir identificação visual da contribuição e/ou uso de tempo de cada invocação, evitando confundir o tempo dos diferentes Shikigamis.
+### 9. Tempo configurável e relógio global
+A ficha de criação de **cada Shikigami** deve oferecer um campo livre para definir seu tempo. O Mestre aprova a ficha conforme seu julgamento; o aplicativo não impõe um teto numérico de regra. No combate, há **um único relógio global compartilhado**: não existe prioridade nem consumo de relógios individuais, e quando o relógio global termina, termina o tempo de todos os Shikigamis ativos.
 
 **Regra confirmada em 2026-10-09 — momento do acréscimo:** o tempo adicional de um Shikigami é acrescido **no instante em que ele é invocado**, não automaticamente no começo de cada turno e não somente quando recebe um comando.
 
-**Regra confirmada em 2026-10-09 — reservas individuais:** cada Shikigami tem **sua própria reserva de tempo identificável**, definida na criação da ficha. As reservas individuais **contribuem para o relógio global do jogador Controlador**, que recebe o acréscimo ao invocar cada criatura. A interface deve permitir acompanhar de qual Shikigami veio cada contribuição, evitando dupla contabilização de um mesmo evento de invocação.
+**Regra confirmada em 2026-10-11 — tempo compartilhado:** a invocação adiciona seu tempo configurado ao relógio global ao ser materializada. Depois do acréscimo, todos compartilham o mesmo saldo e a mesma expiração; não há escolha de prioridade ou reserva separada a consumir por Shikigami. Cada acréscimo ainda deve ser identificado para evitar duplicação do mesmo evento de invocação.
 
-**Regra confirmada em 2026-10-09 — dissipação voluntária:** quando a invocação é dissipada por escolha do Controlador ou Mestre, retirar do relógio global a porção ainda disponível da reserva temporal correspondente àquela invocação, **sem permitir que o relógio global fique abaixo de 10 segundos**. Não descontar tempo já consumido e não afetar a contribuição identificada de outras invocações além do necessário para aplicar a regra.
+**Regra confirmada em 2026-10-11 — dissipação voluntária:** quando a invocação é dissipada por escolha do Controlador ou Mestre, retirar do relógio global o tempo restante associado àquela invocação. Se essa retirada levaria o saldo abaixo de 10 segundos, o relógio fica em 10 segundos. Não retirar tempo já consumido.
 
-**Regra confirmada em 2026-10-09 — queda e derrota definitiva:** chegar a **0 PV não dissipa automaticamente** a invocação. Ela permanece caída no chão, no mapa, e **continua podendo ser alvo**. A dissipação por derrota só ocorre quando seus PV chegam a **−100% dos PV máximos** (por exemplo, −20 PV para uma invocação de PV máximo 20). Antes desse limiar, pode ocorrer a dissipação voluntária conforme a regra acima.
+**Regra confirmada em 2026-10-11 — 0 PV e derrota:** chegar a **0 PV não causa perda permanente**. A invocação continua disponível como ficha e não é removida da biblioteca. A perda permanente só pode ser considerada ao atingir **−100% dos PV máximos** (por exemplo, −20 PV para uma invocação com PV máximo 20), e o Mestre decide se ela ocorre. A duração e os efeitos da incapacitação ainda serão definidos; não implementar uma regra provisória para esse período.
 
-**Regra confirmada em 2026-10-09 — recuperação de um Shikigami caído:** enquanto estiver com 0 PV ou menos, mas acima do limiar de derrota definitiva (−100% dos PV máximos), a invocação pode receber cura. Ao recuperar PV **acima de 0**, ela não volta imediatamente a agir: permanece caída até **gastar uma ação para se levantar**. Somente depois de se levantar volta a agir normalmente. **Decisão confirmada em 2026-10-09:** levantar-se consome **uma Ação de Movimento do próprio Shikigami**, não uma Ação Comum nem uma Ação Bônus. O gasto deve ser contabilizado na economia de ações individual da invocação.
+**Regra confirmada em 2026-10-11 — recuperação:** a invocação recupera **100% dos PV após um descanso longo**. O tratamento de cura parcial, retorno à ação e duração da incapacitação fica pendente de revisão; não aplicar a regra anterior de levantar com Ação de Movimento até essa revisão.
 
-**Regra confirmada em 2026-10-09 — tempo após derrota definitiva:** quando a invocação é definitivamente derrotada e dissipada ao alcançar −100% dos PV máximos, **não retirar sua contribuição temporal restante do relógio global**, que permanece como compensação ao jogador pela perda da invocação. Registrar a saída como derrota definitiva, separada da dissipação voluntária.
+**Regra confirmada em 2026-10-11 — tempo após derrota:** ao atingir −100% dos PV máximos, não descontar do relógio global o tempo já adicionado por aquela invocação. Registrar o evento separado da dissipação voluntária; a decisão sobre perda permanente continua exclusiva do Mestre.
 
-**Pendências que exigem esclarecimento antes da implementação:** unidade, limite e valor inicial do tempo configurável; regras de consumo e reserva durante comandos simultâneos; reinvocação e reinício das reservas; fim do combate. A consequência da derrota definitiva sobre a biblioteca da invocação (perda permanente ou recuperação posterior) permanece sob a decisão do Controlador/Mestre, conforme item 5, salvo nova orientação explícita.
+**Regra confirmada em 2026-10-11 — Hordas:** uma Horda usa um tempo próprio como **uma única entidade**, sem cronômetros individuais por integrante. A Horda compartilha uma reserva geral de PV; não há uma vida separada para cada integrante.
+
+**Pendências que exigem esclarecimento antes da implementação:** duração/efeitos da incapacitação; regras de reinvocação (PE, PV e ações); valor adicional de PE para integrante de Primeiro Grau sob líder Especial; como a reserva temporal única da Horda interage com o relógio global e com seu fim; fim do combate. O limite de Hordas ativas é arredondado para baixo.
 
 ### 10. Economia de ações independente
 Cada Shikigami terá **seu próprio conjunto de ações e recursos**, definidos na sua ficha no momento da criação, em vez de compartilhar as quantidades de ações do jogador. Eles são entidades autônomas em combate, funcionando quase como personagens individuais, mas mantendo vínculo com o proprietário e com o relógio global conforme a decisão anterior.
+
+**Regra confirmada em 2026-10-11 — entrada na iniciativa:** depois de materializado, o Shikigami espera seu próximo turno na ordem de iniciativa para agir; não recebe uma ação imediata no momento da invocação.
 
 **Revisão obrigatória:** a implementação provisória que debita `actionsCurrent` e `bonusActionsCurrent` do Controlador para ações da invocação não atende a esta decisão; revisar antes de afirmar que o combate está concluído.
 
@@ -78,14 +82,19 @@ A autonomia é uma configuração **por Shikigami**, definida na sua própria fi
 ### 12. Identidade e gestão separadas
 Cada Shikigami deve ter identidade visual, imagem/token, ficha, HUD e indicadores próprios de PV, ações e tempo, distinguíveis dos personagens jogadores. Suas rolagens, habilidades, reações e estado devem ser rastreados por invocação, sem confundirem seus valores com os do dono. O Mestre conserva edição e controle total (decisão 7).
 
+### 13. Prazo e controle das reações — 2026-10-11
+- Toda reação tem prazo padrão de **12 segundos** e passa automaticamente ao terminar.
+- O Mestre pode acrescentar segundos ou pausar e retomar **todas as reações ativas** a qualquer momento.
+- Esses controles ficam disponíveis somente para o Mestre. A pausa conserva o tempo restante; ao retomar, a contagem continua desse saldo.
+
 ## Novas verificações de aceitação
 - [ ] Seleção e controle por HUD de invocação e por HUD do Controlador.
 - [ ] Campo configurável de tempo extra na criação de cada Shikigami.
-- [ ] Soma verificável dos tempos individuais ao relógio global do jogador, disparada ao invocar cada Shikigami, sem duplicação.
-- [ ] Reservas de tempo distintas e identificáveis na HUD, contribuindo para o relógio global.
-- [ ] Na dissipação voluntária, retirar somente o tempo restante da invocação, respeitando o piso de 10 segundos no relógio global.
-- [ ] Manter invocações caídas no mapa em 0 PV, ainda como alvos, e dissipar por derrota apenas em −100% dos PV máximos.
-- [ ] Permitir cura acima de 0 PV e exigir uma ação para o Shikigami se levantar antes de voltar a agir.
+- [ ] Acrescentar o tempo configurado ao relógio global ao invocar, sem duplicar o evento; todos compartilham o saldo e terminam quando esse relógio chega a zero, sem FIFO/prioridade por Shikigami.
+- [ ] Na dissipação voluntária, descontar o tempo associado à invocação e respeitar o piso de 10 segundos; a contabilização desse desconto precisa ser definida sem recriar prioridade individual.
+- [ ] Manter a invocação disponível ao chegar a 0 PV e recuperar 100% dos PV em descanso longo; definir e implementar a duração/efeitos da incapacitação.
+- [ ] Perda permanente só após atingir −100% dos PV máximos e sempre por decisão do Mestre.
+- [ ] Criar Horda com um relógio e um total geral de PV para a entidade inteira; definir interação do relógio da Horda com o global.
 - [ ] Preservar o tempo restante no relógio global após derrota definitiva.
 - [ ] Recursos e ações separados por invocação e independentes do saldo de ações do dono.
 - [ ] Autonomia e custos próprios configuráveis por invocação no OMNI.
@@ -112,6 +121,7 @@ Cada Shikigami deve ter identidade visual, imagem/token, ficha, HUD e indicadore
 - Invocações antigas sem campo de aprovação são tratadas como legado já adquirido para não retirar criaturas existentes sem uma migração confirmada.
 - A aprovação deve ser verificada na lógica de materialização, além da interface.
 - A aprovação reconhece a aquisição; permanece necessária a aplicação de limites de campo, custos de PE e regras próprias de Interlúdio, quando aplicáveis.
+- **Regra confirmada em 2026-10-11:** qualquer alteração em uma ficha já aprovada cria uma nova revisão que precisa de nova aprovação antes de a revisão alterada ser usada.
 - **Pendente para revisão de segurança:** autorização reforçada por identidade/perfil no backend multiplayer, trilha de auditoria e revisão de edição após aprovação. A checagem de papel no cliente não constitui autorização confiável por si só.
 
 ## Checklist de implementação — pendente de validação funcional
@@ -120,9 +130,11 @@ Cada Shikigami deve ter identidade visual, imagem/token, ficha, HUD e indicadore
 - [ ] Avisos não bloqueantes de orçamento de atributos, limites de ações e custos do livro.
 - [ ] Integração real de ações/características e automações ao executor OMNI.
 - [ ] Adequação dos comandos/movimentação às regras e exceções aprovadas.
-- [ ] Resolução manual da perda, evitando exclusão irreversível automática.
+- [ ] Resolução de derrota pelo Mestre e restauração de 100% dos PV no descanso longo, sem decidir ainda a duração da incapacitação.
 - [ ] Prompts de reação ao jogador com pausa do relógio.
+- [ ] Passagem automática de toda reação após 12 segundos e controles globais de prazo exclusivos do Mestre.
 - [ ] Permissões de edição/controle de qualquer invocação para o Mestre.
+- [ ] Nova aprovação do Mestre após cada alteração de uma ficha já aprovada.
 - [ ] Testes automatizados e validação em navegador dos fluxos finais.
 
 **Nota:** marcar itens somente depois de implementação e testes verificáveis. O TXT original não deve ser alterado para acomodar estas decisões.

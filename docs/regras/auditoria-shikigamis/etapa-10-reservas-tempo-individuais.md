@@ -4,6 +4,10 @@
 **Branch de entrega:** `main`
 **Escopo:** configurar, conceder, consumir e retirar reservas individuais de tempo das instâncias de invocação, integradas ao cronômetro de turno do dono.
 
+## Atualização de regra — 2026-10-11
+
+As regras de consumo FIFO e saldo restante individual abaixo descrevem a implementação anterior e foram **superadas**. A decisão atual usa um único relógio global compartilhado pelos Shikigamis: não há prioridade/FIFO e todos terminam quando o relógio global acaba. A contribuição continua sendo concedida uma vez ao invocar e a dissipação voluntária mantém o piso de 10 segundos. Revisar a implementação e a HUD antes de considerar esta etapa alinhada; falta definir como descontar a contribuição de uma invocação sem recriar saldos individuais consumidos por prioridade. Para Hordas, existe uma única contribuição como entidade, sem uma por integrante.
+
 ## Regras cobertas
 
 - A quantidade e a unidade são configuradas na criação da ficha. Sem configuração, a invocação concede zero segundos; valores precisam ser finitos e não negativos. Não há limite máximo fixo para a contribuição.

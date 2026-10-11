@@ -12,6 +12,7 @@ import { aceitaAlvoAtivo } from './alvosAtivos';
 import { useReactionStore } from '@/stores/useReactionStore';
 import { useCombatStore } from '@/stores/useCombatStore';
 import { useProfileStore } from '@/stores/useProfileStore';
+import { useRoleStore } from '@/stores/useRoleStore';
 import { planejarCustosAtivos, validarRecursosAtivos } from './custosAtivos';
 import { armaDoPersonagem, armaEstaEmpunhada } from './armaDoPersonagem';
 import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
@@ -50,7 +51,7 @@ export interface OfertaReacaoInvocacao {
   alvoNome: string;
 }
 export type OfertaReacaoAtiva = OfertaReacaoItem | OfertaReacaoInvocacao;
-interface Janela { id: string; evento: EventoReacaoAtiva; ofertas: OfertaReacaoAtiva[]; destinatarios: string[]; pendentes: string[]; resultado: ResultadoJanelaAtiva; busy: boolean; expiresAt?: number; erro?: string }
+interface Janela { id: string; evento: EventoReacaoAtiva; ofertas: OfertaReacaoAtiva[]; destinatarios: string[]; pendentes: string[]; resultado: ResultadoJanelaAtiva; busy: boolean; expiresAt?: number; pausada?: boolean; tempoRestanteMs?: number; erro?: string }
 export interface OfertaRemotaReacao {
   janelaId: string;
   clienteOrigem: string;
@@ -58,6 +59,8 @@ export interface OfertaRemotaReacao {
   ofertas: OfertaReacaoAtiva[];
   evento: EventoReacaoAtiva;
   expiresAt?: number;
+  pausada?: boolean;
+  tempoRestanteMs?: number;
   erro?: string;
   busy?: boolean;
 }
@@ -71,9 +74,10 @@ interface Estado {
 export const useReacoesAtivasStore = create<Estado>((set) => ({
   janelas: [], ofertasRemotas: [],
   receberOfertaRemota: (oferta) => {
-    set(s => ({ ofertasRemotas: [...s.ofertasRemotas.filter(x => x.janelaId !== oferta.janelaId), { ...oferta, busy: false }] }));
+    const ofertaComPrazo = { ...oferta, expiresAt: oferta.expiresAt ?? Date.now() + PRAZO_ESCOLHA_REACAO_MS, busy: false };
+    set(s => ({ ofertasRemotas: [...s.ofertasRemotas.filter(x => x.janelaId !== oferta.janelaId), ofertaComPrazo] }));
     useCombatStore.getState().pauseTurnTimerForReaction(`omni-active-ui:${oferta.janelaId}`);
-    scheduleRemoteExpiry(oferta.janelaId, oferta.expiresAt);
+    scheduleRemoteExpiry(oferta.janelaId, ofertaComPrazo.expiresAt);
   },
   fecharOfertaRemota: (janelaId) => {
     clearTimeout(remoteExpirations.get(janelaId)); remoteExpirations.delete(janelaId);
@@ -89,17 +93,118 @@ const remoteExpirations = new Map<string, ReturnType<typeof setTimeout>>();
 export const PRAZO_SONDAGEM_REACAO_MS = 12000;
 export const PRAZO_ESCOLHA_REACAO_MS = 12000;
 const PRAZO_RESOLUCAO_REACAO_MANUAL_MS = PRAZO_ESCOLHA_REACAO_MS;
+
+type AcaoControlePrazoReacao = 'pausar' | 'retomar' | 'estender';
+interface ControlePrazoReacao { acao: AcaoControlePrazoReacao; segundos?: number }
+
+function aplicarControlePrazoReacoes({ acao, segundos }: ControlePrazoReacao) {
+  const agora = Date.now();
+  const acrescimoMs = Math.floor((segundos ?? 0) * 1000);
+  const estado = useReacoesAtivasStore.getState();
+  if (acao === 'pausar') {
+    const janelas = estado.janelas.map(j => {
+      if (j.pausada) return j;
+      clearTimeout(janelaExpirations.get(j.id)); janelaExpirations.delete(j.id);
+      for (const perfilId of j.pendentes) limparSondagem(j.id, perfilId);
+      return { ...j, expiresAt: undefined, pausada: true, tempoRestanteMs: Math.max(0, (j.expiresAt ?? agora) - agora) };
+    });
+    const ofertasRemotas = estado.ofertasRemotas.map(oferta => {
+      if (oferta.pausada) return oferta;
+      clearTimeout(remoteExpirations.get(oferta.janelaId)); remoteExpirations.delete(oferta.janelaId);
+      return { ...oferta, expiresAt: undefined, pausada: true, tempoRestanteMs: Math.max(0, (oferta.expiresAt ?? agora) - agora) };
+    });
+    useReacoesAtivasStore.setState({ janelas, ofertasRemotas });
+    return;
+  }
+
+  if (acao === 'retomar') {
+    const janelas = estado.janelas.map(j => j.pausada
+      ? { ...j, pausada: false, expiresAt: agora + (j.tempoRestanteMs ?? 0), tempoRestanteMs: undefined }
+      : j);
+    const ofertasRemotas = estado.ofertasRemotas.map(oferta => oferta.pausada
+      ? { ...oferta, pausada: false, expiresAt: agora + (oferta.tempoRestanteMs ?? 0), tempoRestanteMs: undefined }
+      : oferta);
+    useReacoesAtivasStore.setState({ janelas, ofertasRemotas });
+    for (const j of janelas) if (!j.pausada) {
+      scheduleWindowExpiry(j.id, j.expiresAt);
+      for (const perfilId of j.pendentes) scheduleSondagemExpiry(j.id, perfilId, j.expiresAt);
+    }
+    for (const oferta of ofertasRemotas) if (!oferta.pausada) scheduleRemoteExpiry(oferta.janelaId, oferta.expiresAt);
+    return;
+  }
+
+  if (acao === 'estender' && acrescimoMs > 0) {
+    const janelas = estado.janelas.map(j => j.pausada
+      ? { ...j, tempoRestanteMs: (j.tempoRestanteMs ?? 0) + acrescimoMs }
+      : j.expiresAt !== undefined ? { ...j, expiresAt: j.expiresAt + acrescimoMs } : j);
+    const ofertasRemotas = estado.ofertasRemotas.map(oferta => oferta.pausada
+      ? { ...oferta, tempoRestanteMs: (oferta.tempoRestanteMs ?? 0) + acrescimoMs }
+      : oferta.expiresAt !== undefined ? { ...oferta, expiresAt: oferta.expiresAt + acrescimoMs } : oferta);
+    useReacoesAtivasStore.setState({ janelas, ofertasRemotas });
+    for (const j of janelas) if (!j.pausada) {
+      scheduleWindowExpiry(j.id, j.expiresAt);
+      for (const perfilId of j.pendentes) scheduleSondagemExpiry(j.id, perfilId, j.expiresAt);
+    }
+    for (const oferta of ofertasRemotas) if (!oferta.pausada) scheduleRemoteExpiry(oferta.janelaId, oferta.expiresAt);
+  }
+}
+
+/** Controle de prazo sincronizado; somente uma sessão com papel de Mestre pode comandá-lo. */
+export function controlarPrazoReacoesAtivas(acao: AcaoControlePrazoReacao, segundos?: number): boolean {
+  if (useRoleStore.getState().role !== 'MASTER') return false;
+  if (acao === 'estender' && (!Number.isFinite(segundos) || (segundos ?? 0) <= 0)) return false;
+  const controle = { acao, ...(acao === 'estender' ? { segundos } : {}) };
+  aplicarControlePrazoReacoes(controle);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omni-reaction:send', { detail: { tipo: 'controle_prazo', papelRemetente: 'MASTER', ...controle } }));
+  }
+  return true;
+}
+
+/** Aplica um comando recebido no canal multiplayer somente se anunciar o papel de Mestre. */
+export function receberControlePrazoReacoes(controle: ControlePrazoReacao & { papelRemetente?: string }): void {
+  if (controle.papelRemetente !== 'MASTER') return;
+  if (controle.acao === 'estender' && (!Number.isFinite(controle.segundos) || (controle.segundos ?? 0) <= 0)) return;
+  aplicarControlePrazoReacoes(controle);
+}
+
 function scheduleRemoteExpiry(janelaId: string, expiresAt?: number) {
   clearTimeout(remoteExpirations.get(janelaId));
   remoteExpirations.delete(janelaId);
   if (expiresAt === undefined) return;
   remoteExpirations.set(janelaId, setTimeout(() => {
+    const atual = useReacoesAtivasStore.getState().ofertasRemotas.find(x => x.janelaId === janelaId);
+    if (!atual || atual.pausada || atual.expiresAt !== expiresAt) return;
     useReacoesAtivasStore.getState().fecharOfertaRemota(janelaId);
+  }, Math.max(0, expiresAt - Date.now())));
+}
+function scheduleWindowExpiry(janelaId: string, expiresAt?: number) {
+  clearTimeout(janelaExpirations.get(janelaId));
+  janelaExpirations.delete(janelaId);
+  if (expiresAt === undefined) return;
+  janelaExpirations.set(janelaId, setTimeout(() => {
+    const atual = useReacoesAtivasStore.getState().janelas.find(x => x.id === janelaId);
+    if (!atual || atual.pausada || atual.expiresAt !== expiresAt) return;
+    useLogStore.getState().addLog('combat', 'Reação: prazo de 12 segundos expirou; continuando sem reação.');
+    fechar(janelaId, atual.resultado);
   }, Math.max(0, expiresAt - Date.now())));
 }
 function limparSondagem(janelaId: string, perfilId: string) {
   const key = `${janelaId}:${perfilId}`;
   clearTimeout(sondagens.get(key)); sondagens.delete(key);
+}
+function scheduleSondagemExpiry(janelaId: string, perfilId: string, expiresAt?: number) {
+  limparSondagem(janelaId, perfilId);
+  if (expiresAt === undefined) return;
+  const key = `${janelaId}:${perfilId}`;
+  sondagens.set(key, setTimeout(() => {
+    sondagens.delete(key);
+    const atual = useReacoesAtivasStore.getState().janelas.find(x => x.id === janelaId);
+    if (!atual || atual.pausada || atual.expiresAt !== expiresAt || !atual.pendentes.includes(perfilId)) return;
+    useLogStore.getState().addLog('combat', 'Reação: prazo de 12 segundos expirou; continuando sem essa reação.');
+    publicarParaPerfis('fechar', janelaId, atual.evento, [perfilId]);
+    passarOfertaRemota(janelaId, perfilId);
+  }, Math.max(0, expiresAt - Date.now())));
 }
 const vazio = (): ResultadoJanelaAtiva => ({ cancelado: false, defesaBonus: 0, testeBonus: 0 });
 
@@ -133,7 +238,9 @@ export async function responderOfertaRemota(janelaId: string, ofertaId?: string,
     useReacoesAtivasStore.getState().fecharOfertaRemota(janelaId);
     return;
   }
-  useReacoesAtivasStore.getState().marcarOfertaRemotaBusy(janelaId, true);
+  const limite = remoto.pausada ? undefined : Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
+  useReacoesAtivasStore.setState(s => ({ ofertasRemotas: s.ofertasRemotas.map(x => x.janelaId === janelaId ? { ...x, busy: true, erro: undefined, expiresAt: limite, tempoRestanteMs: remoto.pausada ? x.tempoRestanteMs : undefined } : x) }));
+  scheduleRemoteExpiry(janelaId, limite);
   window.dispatchEvent(new CustomEvent('omni-reaction:send', { detail: { tipo: 'processando', janelaId, perfilId, clienteOrigem, ofertaId } }));
   try {
     if (oferta.fonte === 'invocacao') {
@@ -393,59 +500,34 @@ export function abrirJanelaReacaoAtiva(
   const ofertas = todasOfertas.filter(o => podeVerOfertaReacao(o, useProfileStore.getState().activeProfileId));
   const destinatarios = destinatariosReacoes();
   if (!ofertas.length && !destinatarios.length) return Promise.resolve(vazio());
-  const temOfertaInvocacao = todasOfertas.some(oferta => oferta.fonte === 'invocacao');
-  const expiresAt = temOfertaInvocacao ? undefined : Date.now() + PRAZO_ESCOLHA_REACAO_MS;
+  const expiresAt = Date.now() + PRAZO_ESCOLHA_REACAO_MS;
   return new Promise(resolve => {
     resolvers.set(id, resolve);
     useCombatStore.getState().pauseTurnTimerForReaction(`omni-active:${id}`);
-    if (expiresAt !== undefined) {
-      janelaExpirations.set(id, setTimeout(() => {
-        const atual = useReacoesAtivasStore.getState().janelas.find(x => x.id === id);
-        if (atual) {
-          useLogStore.getState().addLog('combat', 'Reação: prazo de 12 segundos expirou; continuando sem reação.');
-          fechar(id, atual.resultado);
-        }
-      }, Math.max(0, expiresAt - Date.now())));
-    }
     useReacoesAtivasStore.setState(s => ({ janelas: [...s.janelas, { id, evento, ofertas, destinatarios, pendentes: [...destinatarios], resultado: vazio(), busy: false, expiresAt }] }));
-    if (expiresAt !== undefined) for (const perfilId of destinatarios) {
-      const key = `${id}:${perfilId}`;
-      sondagens.set(key, setTimeout(() => {
-        sondagens.delete(key);
-        useLogStore.getState().addLog('combat', 'Reação: prazo de 12 segundos expirou; continuando sem essa reação.');
-        publicarParaPerfis('fechar', id, evento, [perfilId]);
-        passarOfertaRemota(id, perfilId);
-      }, PRAZO_SONDAGEM_REACAO_MS));
-    }
+    scheduleWindowExpiry(id, expiresAt);
+    for (const perfilId of destinatarios) scheduleSondagemExpiry(id, perfilId, expiresAt);
     publicarParaPerfis('sondar', id, evento, destinatarios, expiresAt);
   });
 }
 
 /** Ao escolher um feitiço de reação, mantém a interrupção enquanto a ficha o resolve. */
 export function declararReacaoManual(janelaId: string, remoto?: { perfilId: string; clienteOrigem: string }): boolean {
-  const limite = Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
   if (remoto) {
     const oferta = useReacoesAtivasStore.getState().ofertasRemotas.find(x => x.janelaId === janelaId);
     if (!oferta || oferta.busy || (oferta.expiresAt !== undefined && Date.now() > oferta.expiresAt) || !podeResponderReacao(remoto.perfilId)) return false;
-    clearTimeout(remoteExpirations.get(janelaId));
-    remoteExpirations.delete(janelaId);
-    const limiteOpcional = oferta.expiresAt === undefined ? undefined : limite;
-    useReacoesAtivasStore.setState(s => ({ ofertasRemotas: s.ofertasRemotas.map(x => x.janelaId === janelaId ? { ...x, busy: true, expiresAt: limiteOpcional } : x) }));
-    scheduleRemoteExpiry(janelaId, limiteOpcional);
+    const limite = oferta.pausada ? undefined : Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
+    useReacoesAtivasStore.setState(s => ({ ofertasRemotas: s.ofertasRemotas.map(x => x.janelaId === janelaId ? { ...x, busy: true, expiresAt: limite, tempoRestanteMs: oferta.pausada ? x.tempoRestanteMs : undefined } : x) }));
+    scheduleRemoteExpiry(janelaId, limite);
     window.dispatchEvent(new CustomEvent('omni-reaction:send', { detail: { tipo: 'processando', janelaId, perfilId: remoto.perfilId, clienteOrigem: remoto.clienteOrigem } }));
     return true;
   }
   const janela = useReacoesAtivasStore.getState().janelas.find(x => x.id === janelaId);
   if (!janela || janela.busy || (janela.expiresAt !== undefined && Date.now() > janela.expiresAt)) return false;
-  clearTimeout(janelaExpirations.get(janelaId));
-  const limiteOpcional = janela.expiresAt === undefined ? undefined : limite;
-  if (limiteOpcional !== undefined) {
-    janelaExpirations.set(janelaId, setTimeout(() => {
-      const atual = useReacoesAtivasStore.getState().janelas.find(x => x.id === janelaId);
-      if (atual) fechar(janelaId, atual.resultado);
-    }, PRAZO_RESOLUCAO_REACAO_MANUAL_MS));
-  }
-  useReacoesAtivasStore.setState(s => ({ janelas: s.janelas.map(x => x.id === janelaId ? { ...x, busy: true, expiresAt: limiteOpcional } : x) }));
+  const limite = janela.pausada ? undefined : Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
+  useReacoesAtivasStore.setState(s => ({ janelas: s.janelas.map(x => x.id === janelaId ? { ...x, busy: true, expiresAt: limite, tempoRestanteMs: janela.pausada ? x.tempoRestanteMs : undefined } : x) }));
+  scheduleWindowExpiry(janelaId, limite);
+  for (const perfilId of janela.pendentes) scheduleSondagemExpiry(janelaId, perfilId, limite);
   return true;
 }
 
@@ -479,7 +561,10 @@ export async function responderReacaoAtiva(id: string, ofertaId?: string): Promi
   }
   const oferta = j.ofertas.find(o => o.id === ofertaId);
   if (!oferta) return;
-  useReacoesAtivasStore.setState(s => ({ janelas: s.janelas.map(x => x.id === id ? { ...x, busy: true, erro: undefined } : x) }));
+  const limite = j.pausada ? undefined : Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
+  useReacoesAtivasStore.setState(s => ({ janelas: s.janelas.map(x => x.id === id ? { ...x, busy: true, erro: undefined, expiresAt: limite, tempoRestanteMs: j.pausada ? x.tempoRestanteMs : undefined } : x) }));
+  scheduleWindowExpiry(id, limite);
+  for (const perfilId of j.pendentes) scheduleSondagemExpiry(id, perfilId, limite);
   if (oferta.fonte === 'invocacao' && podeResponderReacao(DESTINATARIO_MESTRE)) {
     const destinatario = destinatarioDaOferta(oferta);
     if (destinatario && destinatario !== DESTINATARIO_MESTRE && j.pendentes.includes(destinatario)) {
@@ -545,15 +630,10 @@ export async function receberRespostaRemota(msg: { tipo: 'resultado' | 'passar' 
   limparSondagem(msg.janelaId, msg.perfilId);
   if (msg.tipo === 'processando') {
     if (j.busy) return;
-    const expiresAt = j.expiresAt === undefined ? undefined : Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
-    clearTimeout(janelaExpirations.get(j.id));
-    if (expiresAt !== undefined) {
-      janelaExpirations.set(j.id, setTimeout(() => {
-        const atual = useReacoesAtivasStore.getState().janelas.find(x => x.id === j.id);
-        if (atual) fechar(j.id, atual.resultado);
-      }, PRAZO_RESOLUCAO_REACAO_MANUAL_MS));
-    }
-    useReacoesAtivasStore.setState(s => ({ janelas: s.janelas.map(x => x.id === j.id ? { ...x, busy: true, expiresAt } : x) }));
+    const expiresAt = j.pausada ? undefined : Date.now() + PRAZO_RESOLUCAO_REACAO_MANUAL_MS;
+    useReacoesAtivasStore.setState(s => ({ janelas: s.janelas.map(x => x.id === j.id ? { ...x, busy: true, expiresAt, tempoRestanteMs: j.pausada ? x.tempoRestanteMs : undefined } : x) }));
+    scheduleWindowExpiry(j.id, expiresAt);
+    for (const perfilId of j.pendentes) if (perfilId !== msg.perfilId) scheduleSondagemExpiry(j.id, perfilId, expiresAt);
     return;
   }
   if (msg.tipo === 'disponivel') return;
