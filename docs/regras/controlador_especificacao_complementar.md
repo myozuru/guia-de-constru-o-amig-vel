@@ -51,6 +51,8 @@ Cada Shikigami deve permitir **ambas as interfaces**: (a) selecionar seu token e
 ### 9. Tempo configurável e relógio global
 A ficha de criação de **cada Shikigami** deve oferecer um campo livre para definir seu tempo. O Mestre aprova a ficha conforme seu julgamento; o aplicativo não impõe um teto numérico de regra. No combate, há **um único relógio global compartilhado**: não existe prioridade nem consumo de relógios individuais, e quando o relógio global termina, termina o tempo de todos os Shikigamis ativos.
 
+**Regra confirmada em 2026-10-11 — valor do tempo:** cada Shikigami recebe o tempo escolhido na criação, sem valor padrão e sem limite máximo geral imposto pelo aplicativo. O Mestre aprova a ficha conforme seu julgamento.
+
 **Regra confirmada em 2026-10-09 — momento do acréscimo:** o tempo adicional de um Shikigami é acrescido **no instante em que ele é invocado**, não automaticamente no começo de cada turno e não somente quando recebe um comando.
 
 **Regra confirmada em 2026-10-11 — tempo compartilhado:** a invocação adiciona seu tempo configurado ao relógio global ao ser materializada. Depois do acréscimo, todos compartilham o mesmo saldo e a mesma expiração; não há relógios independentes nem prioridade por Shikigami. Os registros por instância servem para identificar/idempotizar acréscimos e retirar a parte restante em uma dissipação voluntária. O tempo global decorrido é distribuído proporcionalmente entre o tempo-base e os acréscimos ativos, sem FIFO.
@@ -72,12 +74,16 @@ Cada Shikigami terá **seu próprio conjunto de ações e recursos**, definidos 
 
 **Regra confirmada em 2026-10-11 — entrada na iniciativa:** depois de materializado, o Shikigami espera seu próximo turno na ordem de iniciativa para agir; não recebe uma ação imediata no momento da invocação.
 
+**Pendência:** definir quando as ações e os recursos próprios do Shikigami se renovam durante o combate.
+
 **Revisão obrigatória:** a implementação provisória que debita `actionsCurrent` e `bonusActionsCurrent` do Controlador para ações da invocação não atende a esta decisão; revisar antes de afirmar que o combate está concluído.
 
 ### 11. Autonomia configurada individualmente
 A autonomia é uma configuração **por Shikigami**, definida na sua própria ficha, inclusive o **custo dos comandos**. Deve permitir comportamentos e ações automáticas em combate por meio do motor OMNI, respeitando sua validação e segurança. Não impor o mesmo conjunto de regras de autonomia a todas as invocações.
 
-**Pormenores ainda não definidos:** quais custos são permitidos, como são pagos e quais gatilhos OMNI podem operar sem intervenção do Controlador. Perguntar antes de escolher defaults de regra.
+**Regra confirmada em 2026-10-11 — confirmação do jogador:** toda ação proposta ou acionada pela autonomia exige confirmação do jogador antes de ser executada.
+
+**Pormenores ainda não definidos:** quais custos são permitidos e como são pagos. Não executar uma ação autônoma sem a confirmação do jogador.
 
 ### 12. Identidade e gestão separadas
 Cada Shikigami deve ter identidade visual, imagem/token, ficha, HUD e indicadores próprios de PV, ações e tempo, distinguíveis dos personagens jogadores. Suas rolagens, habilidades, reações e estado devem ser rastreados por invocação, sem confundirem seus valores com os do dono. O Mestre conserva edição e controle total (decisão 7).
