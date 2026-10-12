@@ -80,6 +80,7 @@ export interface TestRequest {
       invocationId: string;
       invocationInstanceId: string;
       name: string;
+      tipoAlvo?: 'unico' | 'area';
     };
   };
   resolutionApplied?: boolean;
