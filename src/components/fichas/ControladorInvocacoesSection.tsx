@@ -349,12 +349,25 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
     })),
   ];
   const acoesDeAtaque = (inv: InvocacaoControlador) => inv.acoes.filter(a => a.tipo === 'ataque' || a.teste === 'ataque' || a.teste === 'resistencia');
-  const alvosDisponiveis = [...new Map(Object.values(entities)
+  const alvosPersonagensDisponiveis = [...new Map(Object.values(entities)
     .filter(entity => entity.characterId && entity.characterId !== character.id && !entity.invocationId && !entity.hidden)
     .map(entity => {
       const alvo = allCharacters.find(item => item.id === entity.characterId);
       return [entity.characterId!, { id: entity.characterId!, nome: alvo?.name ?? entity.label ?? entity.characterId! }] as const;
     })).values()];
+  const alvosInvocacaoDisponiveis = Object.values(entities)
+    .filter(entity => entity.invocationId && entity.ownerCharId && !entity.hidden &&
+      entity.invocationState !== 'derrotada' && entity.invocationState !== 'dissipada')
+    .flatMap(entity => {
+      const donoAlvo = allCharacters.find(item => item.id === entity.ownerCharId);
+      const modeloAlvo = donoAlvo?.invocacoesConhecidas?.find(item => item.id === entity.invocationId);
+      return donoAlvo && modeloAlvo
+        ? [{ id: `invoc:${entity.id}`, nome: entity.invocationHordeId
+          ? entity.label || `Horda de ${modeloAlvo.apelido?.trim() || modeloAlvo.nome}`
+          : `${modeloAlvo.apelido?.trim() || modeloAlvo.nome} (Shikigami)` }]
+        : [];
+    });
+  const alvosDisponiveis = [...alvosPersonagensDisponiveis, ...alvosInvocacaoDisponiveis];
   const configOmniDaAcao = (acao: InvocacaoControlador['acoes'][number]) => acao.entidadeOmniId && acao.acaoOmniId
     ? entidades[acao.entidadeOmniId]?.acoesAtivas?.find(item => item.id === acao.acaoOmniId)
     : undefined;
@@ -791,8 +804,8 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
               {acoesDeAtaque(inv).some(acao => !['multiplo', 'area'].includes(configOmniDaAcao(acao)?.tipo_alvo ?? 'unico')) && <label className="block text-xs">Alvo para ação individual
                 <select aria-label={`Alvo de ${inv.nome}`} className="mt-1 w-full rounded border border-input bg-background p-2"
                   value={alvosAtaque[inv.id] ?? ''} onChange={e => setAlvosAtaque(v => ({ ...v, [inv.id]: e.target.value }))}>
-                  <option value="">Selecione uma ficha no mapa</option>
-                  {alvosDisponiveis.map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
+                  <option value="">Selecione uma ficha ou invocação no mapa</option>
+                  {alvosDisponiveis.filter(alvo => alvo.id !== `invoc:${token?.id}`).map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
                 </select>
               </label>}
               {acoesDeAtaque(inv).some(acao => configOmniDaAcao(acao)?.tipo_alvo === 'area') && <p className="text-xs text-muted-foreground">Ações em área: ao usar, posicione e confirme a forma no mapa. O raio em si usa o centro da invocação.</p>}
@@ -807,7 +820,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                       ...current,
                       [chave]: Array.from(event.currentTarget.selectedOptions, option => option.value),
                     }))}>
-                    {alvosDisponiveis.map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
+                    {alvosDisponiveis.filter(alvo => alvo.id !== `invoc:${token?.id}`).map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
                   </select>
                 </label>;
               })}
