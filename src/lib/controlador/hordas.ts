@@ -50,6 +50,27 @@ export interface HordaCalculada {
   };
 }
 
+export type TipoAlvoDanoHorda = "unico" | "area";
+
+/**
+ * Resolve a RD de uma invocação atingida. Hordas ignoram toda RD/resistência
+ * quando a fonte é uma área; contra alvo único, somam o nível do Controlador
+ * à RD normal da invocação. O bônus especial não entra no cálculo de negação.
+ */
+export function calcularReducaoDanoHorda(input: {
+  ehHorda: boolean;
+  tipoAlvo: TipoAlvoDanoHorda;
+  rdBase: number;
+  nivelDono: number;
+}): number {
+  const rdBruta = Number.isFinite(input.rdBase) ? input.rdBase : 0;
+  if (!input.ehHorda) return rdBruta;
+  const rdBase = Math.max(0, rdBruta);
+  if (input.tipoAlvo === "area") return 0;
+  const nivelDono = Number.isFinite(input.nivelDono) ? Math.max(0, Math.floor(input.nivelDono)) : 0;
+  return rdBase + nivelDono;
+}
+
 export type ResultadoCalculoHorda =
   | { ok: true; horda: HordaCalculada }
   | { ok: false; codigo: string; motivo: string };
