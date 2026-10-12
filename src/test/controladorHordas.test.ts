@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularHorda, limiteHordasAtivas, validarLimiteHorda } from "@/lib/controlador/hordas";
+import { calcularHorda, calcularReducaoDanoHorda, limiteHordasAtivas, validarLimiteHorda } from "@/lib/controlador/hordas";
 
 describe("regras de Hordas", () => {
   it("arredonda para baixo o limite de Hordas ativas", () => {
@@ -71,6 +71,12 @@ describe("regras de Hordas", () => {
     });
 
     expect(resultado).toMatchObject({ ok: true, horda: { pvAtual: 11.5, pvMaximo: 22.5 } });
+  });
+
+  it("zera RD contra área e soma o nível do Controlador contra alvo único", () => {
+    expect(calcularReducaoDanoHorda({ ehHorda: true, tipoAlvo: "area", rdBase: 8, nivelDono: 10 })).toBe(0);
+    expect(calcularReducaoDanoHorda({ ehHorda: true, tipoAlvo: "unico", rdBase: 8, nivelDono: 10 })).toBe(18);
+    expect(calcularReducaoDanoHorda({ ehHorda: false, tipoAlvo: "unico", rdBase: 8, nivelDono: 10 })).toBe(8);
   });
 
   it("recusa líder especial, membro de grau igual ou superior e membro duplicado", () => {
