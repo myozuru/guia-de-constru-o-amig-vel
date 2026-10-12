@@ -373,6 +373,56 @@ describe('Controlador — materialização real no mapa', () => {
       useCombatStore.setState(combateAntes as never);
     }
   });
+  it('aplica RD por alvo único e considera a Horda Fragilizada contra dano em área', () => {
+    const dono = pegarFicha('dono');
+    useCharacterStore.getState().updateCharacter('dono', {
+      level: 4,
+      invocacoesConhecidas: (dono.invocacoesConhecidas ?? []).map(item => item.id === 'a'
+        ? { ...item, grau: 'primeiro' as const }
+        : item.id === 'b' ? { ...item, grau: 'quarto' as const } : item),
+    });
+    const resultado = invocarHordaControlador('dono', {
+      eventoId: 'evento-horda-rd', liderId: 'a', membrosIds: ['b'],
+      tempoAdicional: { quantidade: 1, unidade: 'turnos' }, x: 210, y: 140,
+    });
+    if (!resultado.ok) throw new Error(resultado.motivo);
+    const token = useMapStore.getState().entities[resultado.tokenId];
+
+    expect(causarDanoInvocacao(token.id, 10, 'DCO', token.invocationInstanceId, { tipoAlvo: 'unico' }))
+      .toMatchObject({ ok: true, hpRestante: 12 });
+    expect(causarDanoInvocacao(token.id, 10, 'DCO', token.invocationInstanceId, { tipoAlvo: 'area' }))
+      .toMatchObject({ ok: true, hpRestante: 2 });
+    expect(useMapStore.getState().entities[token.id].hp).toBe(2);
+  });
+  it('permite selecionar uma Horda como alvo único de um ataque e aplica a RD especial', async () => {
+    const dono = pegarFicha('dono');
+    useCharacterStore.getState().updateCharacter('dono', {
+      level: 4,
+      invocacoesConhecidas: (dono.invocacoesConhecidas ?? []).map(item => item.id === 'a'
+        ? { ...item, atributos: { forca: 20, destreza: 10, constituicao: 10, inteligencia: 10, sabedoria: 10, presenca: 10 },
+          economiaAcoesConfigurada: { acaoComum: 1 },
+          acoes: [{ id: 'mordida', nome: 'Mordida', tipo: 'ataque' as const, alcanceM: 1.5, dano: '1d6', margemCritico: 20 }] }
+        : item.id === 'b' ? { ...item, grau: 'primeiro' as const }
+          : item.id === 'c' ? { ...item, grau: 'quarto' as const } : item),
+    });
+    const fonte = invocarControlador('dono', 'a', 'leste');
+    if (!fonte.ok) throw new Error(fonte.motivo);
+    const alvo = invocarHordaControlador('dono', {
+      eventoId: 'evento-horda-alvo-unico', liderId: 'b', membrosIds: ['c'],
+      tempoAdicional: { quantidade: 1, unidade: 'turnos' }, x: 280, y: 140,
+    });
+    if (!alvo.ok) throw new Error(alvo.motivo);
+    useCombatStore.setState({ inCombat: true, round: 1, initiativeOrder: [{ charId: 'dono', charName: 'Dono', roll: 10, bonus: 0, total: 10 }], currentTurnIndex: 0 } as never);
+    vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockImplementation(async dice => dice.map(tipo => tipo === 'D20' ? 15 : tipo === 'D6' ? 6 : 1));
+
+    const resultado = await comandarAtaque('dono', 'a', 'mordida', `invoc:${alvo.tokenId}`);
+
+    if (!resultado.ok) throw new Error(resultado.motivo);
+    expect(resultado).toMatchObject({ ok: true, acertou: true, dano: 6 });
+    expect(useMapStore.getState().entities[alvo.tokenId].hp).toBe(16);
+    useCombatStore.setState({ inCombat: false } as never);
+    vi.restoreAllMocks();
+  });
   it('repete um lote com o mesmo ID sem recriar tokens nem cobrar PE de novo', () => {
     const posicoes = [
       { invocacaoId: 'a', x: 210, y: 140 },
