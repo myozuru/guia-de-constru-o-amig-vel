@@ -33,6 +33,7 @@ export async function resolverDanoAposTRInvocacao(request: TestRequest): Promise
           dano,
           resolution.damageType,
           resolution.targetInvocation.invocationInstanceId,
+          { tipoAlvo: resolution.targetInvocation.tipoAlvo ?? 'unico' },
         );
         if (!aplicado.ok) throw new Error(aplicado.motivo);
       } else {
