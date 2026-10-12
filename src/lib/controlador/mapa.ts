@@ -63,7 +63,7 @@ import {
   parseFormulaDanoInvocacao,
   resolverAcertoInvocacao,
 } from './rolagens';
-import { calcularHorda, validarLimiteHorda, type GrauHorda } from './hordas';
+import { calcularHorda, calcularReducaoDanoHorda, validarLimiteHorda, type GrauHorda, type TipoAlvoDanoHorda } from './hordas';
 
 export type DirecaoInvocacao = 'norte' | 'sul' | 'leste' | 'oeste';
 export type ResultadoInvocacao = { ok: true; tokenId: string } | { ok: false; motivo: string };
@@ -1192,6 +1192,7 @@ export function causarDanoInvocacao(
   dano: number,
   tipoDano?: DamageType,
   instanciaEsperadaId?: string,
+  contexto: { tipoAlvo?: TipoAlvoDanoHorda } = {},
 ): { ok: true; hpRestante: number; destruida: boolean } | { ok: false; motivo: string } {
   const mapa = useMapStore.getState();
   const token = mapa.entities[tokenId];
@@ -1210,7 +1211,13 @@ export function causarDanoInvocacao(
     efeito.tipo === 'reducao_dano' && efeito.expiraNaRodada >= (useCombatStore.getState().round ?? 1) &&
     (!efeito.tiposDano?.length || (!!tipoDano && efeito.tiposDano.includes(tipoDano)))
   ).reduce((total, efeito) => total + efeito.valor, 0);
-  const danoFinal = Math.max(0, Math.floor(dano) - rdCaracteristica - rdAuxilio);
+  const rdEfetiva = calcularReducaoDanoHorda({
+    ehHorda: Boolean(token.invocationHordeId),
+    tipoAlvo: contexto.tipoAlvo ?? 'unico',
+    rdBase: rdCaracteristica + rdAuxilio,
+    nivelDono: dono.level,
+  });
+  const danoFinal = Math.max(0, Math.floor(dano) - rdEfetiva);
   const pvTemporarios = Math.max(0, atual.pvTemporarios ?? 0);
   const absorvido = Math.min(pvTemporarios, danoFinal);
   const resultado = aplicarDanoPVInvocacao(atual, danoFinal - absorvido);
@@ -1686,11 +1693,8 @@ async function executarAtaqueInvocacao(
   if (!debito.ok) return debito;
   const categoria = categoriaEconomiaDaAcao(acao, instancia.economiaAcoes);
   if (!categoria) return { ok: false, motivo: 'Categoria de ação própria não configurada.' };
-  const idsInvocacoesAlvo = selecaoArea ? idsAlvo.filter(id => id.startsWith('invoc:')) : [];
+  const idsInvocacoesAlvo = idsAlvo.filter(id => id.startsWith('invoc:'));
   const idsPersonagensAlvo = idsAlvo.filter(id => !id.startsWith('invoc:'));
-  if (!selecaoArea && idsInvocacoesAlvo.length) {
-    return { ok: false, motivo: 'Invocações só podem ser alvos desta ação pela geometria da área.' };
-  }
   const alvos = idsPersonagensAlvo.map(id => {
     const personagem = useCharacterStore.getState().characters.find(c => c.id === id);
     const token = personagem ? resolverTokenDaFicha(personagem, mapa.entities, mapa.layerVisible) : undefined;
@@ -1701,7 +1705,7 @@ async function executarAtaqueInvocacao(
   const alvosInvocacaoBrutos = idsInvocacoesAlvo.map(id => {
     const token = mapa.entities[id.slice('invoc:'.length)];
     if (!token?.ownerCharId || !token.invocationId || token.hidden ||
-      mapa.layerVisible[token.layer ?? 'tokens'] === false) return null;
+      mapa.layerVisible[token.layer ?? 'tokens'] === false || (!selecaoArea && token.id === servo.id)) return null;
     const donoAlvo = personagens.find(character => character.id === token.ownerCharId);
     const modeloAlvo = donoAlvo?.invocacoesConhecidas?.find(item => item.id === token.invocationId);
     if (!donoAlvo || !modeloAlvo) return null;
@@ -1730,8 +1734,8 @@ async function executarAtaqueInvocacao(
     return {
       ok: false,
       motivo: tipoTeste === 'resistencia'
-        ? 'Uma invocação na área não tem dados válidos para resolver esse Teste de Resistência. Nada foi executado.'
-        : 'Uma invocação na área não tem ficha, Defesa ou estado válido. Nada foi executado.',
+        ? 'Uma invocação-alvo não tem dados válidos para resolver esse Teste de Resistência. Nada foi executado.'
+        : 'Uma invocação-alvo não tem ficha, Defesa ou estado válido. Nada foi executado.',
     };
   }
   const alvosInvocacaoValidados = alvosInvocacaoBrutos.filter(
@@ -1744,15 +1748,22 @@ async function executarAtaqueInvocacao(
       (servo.y + servo.h / 2) - (alvo.token.y + alvo.token.h / 2)) * escala;
     return { ...alvo, distancia, defesa: computeTotalDefense(alvo.personagem, {}, tipoTeste === 'ataque' && acao.tipoAtaque === 'distancia' ? 'ranged' : 'melee') };
   });
+  const alvosInvocacaoComDistancia = alvosInvocacaoValidados.map(alvo => ({
+    ...alvo,
+    distancia: Math.hypot((servo.x + servo.w / 2) - (alvo.token.x + alvo.token.w / 2),
+      (servo.y + servo.h / 2) - (alvo.token.y + alvo.token.h / 2)) * escala,
+  }));
   if (alvosValidados.length + alvosInvocacaoValidados.length !== idsAlvo.length) return { ok: false, motivo: 'Alvo inválido.' };
   if (!selecaoArea && alvosValidados.some(alvo => alvo.distancia > (acao.alcanceM ?? 1.5) + 1e-6)) return { ok: false, motivo: 'Um ou mais alvos estão fora do alcance.' };
+  if (!selecaoArea && alvosInvocacaoComDistancia.some(alvo => alvo.distancia > (acao.alcanceM ?? 1.5) + 1e-6)) return { ok: false, motivo: 'Uma ou mais invocações estão fora do alcance.' };
   if (resolucaoOmni?.ok && alvosValidados.some(alvo => selecaoArea
     ? !filtroAceitaPersonagemNaArea(dono, alvo.personagem, resolucaoOmni.config)
     : !aceitaAlvoAtivo(dono, alvo.personagem, resolucaoOmni.config))) {
     return { ok: false, motivo: 'Um ou mais alvos não atendem ao filtro OMNI.' };
   }
-  if (resolucaoOmni?.ok && alvosInvocacaoValidados.some(alvo =>
-    !filtroAceitaPersonagemNaArea(dono, alvo.dono, resolucaoOmni.config))) {
+  if (resolucaoOmni?.ok && alvosInvocacaoValidados.some(alvo => selecaoArea
+    ? !filtroAceitaPersonagemNaArea(dono, alvo.dono, resolucaoOmni.config)
+    : !aceitaAlvoAtivo(dono, alvo.dono, resolucaoOmni.config))) {
     return { ok: false, motivo: 'Uma invocação atingida não atende ao filtro OMNI.' };
   }
   const formula = acao.dano ? parseFormulaDanoInvocacao(acao.dano) : null;
@@ -1847,6 +1858,7 @@ async function executarAtaqueInvocacao(
                 invocationId: alvo.modelo.id,
                 invocationInstanceId: alvo.instancia.id,
                 name: alvo.nome,
+                tipoAlvo: selecaoArea ? 'area' : 'unico',
               },
             },
           } : {}),
@@ -1917,7 +1929,9 @@ async function executarAtaqueInvocacao(
       }
       const dano = Math.max(0, rolagem.total + formula!.fixo + calcularBonusDanoInvocacao(modelo, acao, 'ataque') + bonusDanoAuxilio);
       if (alvo.tipo === 'invocacao') {
-        const aplicado = causarDanoInvocacao(alvo.token.id, dano, acao.tipoDano ?? 'DCO', alvo.instanciaId);
+        const aplicado = causarDanoInvocacao(alvo.token.id, dano, acao.tipoDano ?? 'DCO', alvo.instanciaId, {
+          tipoAlvo: selecaoArea ? 'area' : 'unico',
+        });
         if (!aplicado.ok) throw new Error(aplicado.motivo);
       } else {
         await useCharacterStore.getState().applyDamage(alvo.personagem.id, dano, acao.tipoDano ?? 'DCO', {
