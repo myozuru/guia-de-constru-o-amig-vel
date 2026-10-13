@@ -35,3 +35,11 @@
 - Efeitos OMNI contínuos presos ao alvo (cura todo turno, assistência de dano por tipo de ataque) ficam em `Character.omniEfeitosContinuos` e src/lib/omni/efeitosContinuos.ts; valem enquanto a sustentação de origem existir — assim somem sozinhos sem precisar de limpeza em cada caminho.
 - Conquistas sincronizam pela fatia `conquistas` (definições, desbloqueios e títulos mesclados por `updatedAt`); gatilhos automáticos chamam src/lib/conquistas/motor.ts por import dinâmico para evitar ciclos entre stores.
 - Global diary access and character achievement shortcuts reuse DiarioQuests with an initial-tab prop; mount dialogs only while open so each entry starts on the intended tab and character.
+
+# Fluxo de versionamento (agentes)
+
+- Toda alteração começa em uma **branch local** (`feature/*`, `fix/*`, `docs/*`) — nunca diretamente na `main`.
+- Os commits ficam **locais**: nenhum `push` é feito sem pedido explícito do usuário.
+- A `main` só recebe integração (merge/cherry-pick) **quando o usuário solicitar** — o agente não integra por iniciativa própria.
+- Operações destrutivas (force push, `reset --hard`, reescrever histórico já publicado, excluir branches) exigem autorização prévia.
+- Vale o aviso do Lovable acima: nunca reescrever histórico já publicado.
