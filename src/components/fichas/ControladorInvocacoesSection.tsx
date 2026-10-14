@@ -1,3 +1,5 @@
+import { InvocationDisclosure } from "@/components/invocacoes/InvocationDisclosure";
+import { InvocationSelect } from "@/components/invocacoes/InvocationSelect";
 import { useEffect, useState } from 'react';
 import type { Character } from '@/types';
 import { useCharacterStore } from '@/stores/useCharacterStore';
@@ -41,7 +43,7 @@ function criaturasGrimorio(): Fonte[] {
     }));
   } catch { return []; }
 }
-export function ControladorInvocacoesSection({ character, onEditFicha }: { character: Character; onEditFicha?: (id: string) => void }) {
+export function ControladorInvocacoesSection({ character, onEditFicha, onCreateFicha }: { character: Character; onEditFicha?: (id: string) => void; onCreateFicha?: () => void }) {
   const updateCharacter = useCharacterStore(s => s.updateCharacter);
   const allCharacters = useCharacterStore(s => s.characters);
   const isMaster = useRoleStore(s => s.role) === 'MASTER';
@@ -226,6 +228,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
       : 'Perda permanente registrada; a ficha foi arquivada e o histórico foi preservado.');
     setConfirmandoPerdaDerrota(null);
   };
+  const [libraryQuery, setLibraryQuery] = useState('');
   const catalogo = character.invocacoesConhecidas ?? [];
   const assetForFicha = (inv: InvocacaoControlador) => {
     const principal = inv.imagemAssetId ? assetCache.get(inv.imagemAssetId) : null;
@@ -555,59 +558,27 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
   };
   return (
     <div className="space-y-3 rounded-lg border border-border p-3 text-sm">
-      <div className="font-semibold">Invocações conhecidas: {catalogo.length}/{max ?? 'Interlúdio'} · Em campo: {ativos.length}/{ativas}</div>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="inv-toolbar"><div><p className="inv-eyebrow">Biblioteca do controlador</p><h2>Suas invocações</h2></div>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar ficha</button>}</div>
+      <label className="inv-field">Buscar na biblioteca<input type="search" value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} placeholder="Nome ou apelido" /></label>
+      {catalogo.length === 0 && <div className="inv-empty"><div className="inv-empty-icon" aria-hidden="true">◇</div><h3>Sua biblioteca começa aqui</h3><p>Crie a primeira ficha para organizar suas invocações e acompanhar a aprovação do Mestre.</p>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar primeira ficha</button>}</div>}
+      {catalogo.length > 0 && !catalogo.some(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.toLocaleLowerCase())) && <p role="status" className="inv-description">Nenhuma invocação corresponde à busca.</p>}
+      <dl className="inv-library-hud" aria-label="Resumo da biblioteca"><div><dt>Conhecidas / limite</dt><dd>{catalogo.length} / {max ?? 'Interlúdio'}</dd></div><div><dt>Em campo / limite</dt><dd>{ativos.length} / {ativas}</dd></div><div><dt>Selecionadas</dt><dd>{invocacoesSelecionadas.length} / 2</dd></div><div><dt>Aguardando aprovação</dt><dd>{catalogo.filter(inv => inv.aprovacaoMestre === 'pendente').length}</dd></div></dl>
+      {catalogo.length > 0 && (
+<div className="inv-command-bar flex flex-wrap items-end gap-2">
         <label className="block min-w-40 flex-1 text-xs">Direção dos comandos de movimento
-          <select aria-label="Direção do movimento da invocação" value={direcao} onChange={e => setDirecao(e.target.value as DirecaoInvocacao)} className="mt-1 w-full rounded border border-input bg-background p-2">
+          <InvocationSelect aria-label="Direção do movimento da invocação" value={direcao} onChange={e => setDirecao(e.target.value as DirecaoInvocacao)} className="mt-1 w-full rounded border border-input bg-background p-2">
             <option value="norte">Norte</option><option value="sul">Sul</option><option value="leste">Leste</option><option value="oeste">Oeste</option>
-          </select>
+          </InvocationSelect>
         </label>
         <button type="button" className="rounded border border-primary px-3 py-2 text-xs disabled:opacity-50" disabled={!!carregandoArteId || invocacoesSelecionadas.length < 1} onClick={() => void invocarSelecionadas()}>
           {carregandoArteId === 'lote' ? 'Preparando posicionamento…' : 'Invocar selecionadas (' + invocacoesSelecionadas.length + '/2)'}
         </button>
       </div>
-      {controlador && <section className="space-y-2 rounded border border-primary/40 p-3" aria-label="Criar Horda">
-        <strong className="text-xs">Criar Horda</strong>
-        <p className="text-xs text-muted-foreground">Escolha um líder de Primeiro Grau ou inferior e membros de grau inferior ao dele. A Horda ocupa uma vaga e usa uma única ficha de PV; as ações vêm do líder.</p>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <label className="text-xs">Líder
-            <select aria-label="Líder da Horda" value={hordaLiderId} onChange={event => { setHordaLiderId(event.target.value); setHordaMembrosIds([]); }} className="mt-1 w-full rounded border border-input bg-background p-2">
-              <option value="">Escolha uma invocação</option>
-              {catalogo.filter(inv => inv.grau && inv.grau !== 'especial').map(inv => <option key={inv.id} value={inv.id} disabled={hordaModelosVinculados.has(inv.id) || ativos.some(token => token.invocationId === inv.id) || Boolean(inv.perdaPermanente) || !podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada })}>{inv.apelido?.trim() || inv.nome} · {inv.grau}</option>)}
-            </select>
-          </label>
-          <div className="text-xs">
-            <label className="block">Contribuição de tempo da Horda
-              <div className="mt-1 grid grid-cols-2 gap-2">
-                <input aria-label="Quantidade de tempo da Horda" type="number" min="0" step="any" value={hordaTempoQuantidade} onChange={event => setHordaTempoQuantidade(event.target.value)} placeholder="Quantidade" className="w-full rounded border border-input bg-background p-2" />
-                <input aria-label="Unidade de tempo da Horda" value={hordaTempoUnidade} onChange={event => setHordaTempoUnidade(event.target.value)} placeholder="segundos, turnos…" className="w-full rounded border border-input bg-background p-2" />
-              </div>
-            </label>
-            <span className="mt-1 block text-muted-foreground">Sem valor inicial ou limite máximo; informe a quantidade e a unidade a cada criação.</span>
-          </div>
-        </div>
-        {hordaLiderId && <fieldset className="space-y-1 rounded border border-border p-2">
-          <legend className="px-1 text-xs">Membros (limite: {Math.max(0, ativas - 1)})</legend>
-          {membrosHordaDisponiveis.length === 0
-            ? <p className="text-xs text-muted-foreground">Não há membros elegíveis. Confira o grau do líder e as fichas do catálogo.</p>
-            : membrosHordaDisponiveis.map(inv => {
-              const indisponivel = hordaModelosVinculados.has(inv.id) || ativos.some(token => token.invocationId === inv.id) || Boolean(inv.perdaPermanente) || !podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada });
-              return <label key={inv.id} className="flex items-center gap-2 text-xs">
-                <input type="checkbox" aria-label={'Adicionar ' + inv.nome + ' à Horda'} checked={hordaMembrosIds.includes(inv.id)} disabled={indisponivel || !!carregandoArteId} onChange={event => setHordaMembrosIds(current => event.target.checked ? [...current, inv.id] : current.filter(id => id !== inv.id))} />
-                {inv.apelido?.trim() || inv.nome} · {inv.grau} · PV {inv.hpAtual}/{inv.hpMaximo}{indisponivel ? ' · indisponível' : ''}
-              </label>;
-            })}
-        </fieldset>}
-        {hordaPreview?.ok
-          ? <p className="text-xs" role="status">Prévia: PV compartilhados {hordaPreview.horda.pvAtual}/{hordaPreview.horda.pvMaximo} · custo {hordaPreview.horda.custoInvocacaoPE} PE · {hordaPreview.horda.quantidadeMembros} membro(s) · tempo único +{hordaTempoPreview.ok ? formatarSegundosTempoInvocacao(hordaTempoPreview.segundos) : '—'} s.</p>
-          : hordaLiderId && hordaMembrosIds.length > 0 && <p className="text-xs text-amber-300" role="status">{hordaPreview && !hordaPreview.ok ? hordaPreview.motivo : 'Confira o grau e o tempo da composição.'}</p>}
-        <button type="button" className="rounded border border-primary px-3 py-2 text-xs disabled:opacity-50" disabled={!!carregandoArteId || !hordaPreview?.ok || !hordaTempoPreview.ok || !hordaMembrosIds.length} onClick={() => void formarHorda()}>
-          {carregandoArteId === 'horda' ? 'Preparando Horda…' : 'Posicionar Horda no mapa'}
-        </button>
-      </section>}
-      <p className="text-xs text-muted-foreground">Selecione até duas fichas e clique no mapa para escolher uma célula livre para cada uma. Invocar é Ação Livre por enquanto. Fichas com 0 PV continuam invocáveis e entram Caídas; descanso longo restaura 100% dos PV.</p>
+      )}
+      {catalogo.length > 0 && (<p className="text-xs text-muted-foreground">Selecione até duas fichas e clique no mapa para escolher uma célula livre para cada uma. Invocar é Ação Livre por enquanto. Fichas com 0 PV continuam invocáveis e entram Caídas; descanso longo restaura 100% dos PV.</p>)}
       {mensagem && <p role="status" className="text-xs text-muted-foreground">{mensagem}</p>}
-      {catalogo.map(inv => {
+{erro && <p role="alert" className="text-xs inv-error">{erro}</p>}
+      {catalogo.filter(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.toLocaleLowerCase())).map(inv => {
         const arte = assetForFicha(inv);
         const estadoIntermediario = validarIntermediarioInvocacao(inv, character, itensInventario, catalogo);
         const instanciaHorda = [...(character.instanciasInvocacao ?? [])].reverse().find(item =>
@@ -686,17 +657,23 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
         const podeIntervirNaAutonomia = isMaster || Boolean(character.profileId && activeProfileId === character.profileId);
         const podeResolverDerrota = isMaster;
         const alcanceConfigurado = Number.isFinite(inv.alcanceInvocacaoM) && (inv.alcanceInvocacaoM ?? -1) >= 0;
-        const podeSelecionar = !emHorda && !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
+        const aguardandoRodadaHorda = character.instanciasInvocacao?.some(item =>
+          item.membrosHordaRemovidos?.some(membro => membro.modeloId === inv.id && membro.bloqueioRodadas > 0));
+        const podeSelecionar = !aguardandoRodadaHorda && !emHorda && !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
         return (
-        <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border p-2">
-          <div className="flex items-center gap-2">
+        <div key={inv.id} className="inv-card flex flex-wrap items-center justify-between gap-2 rounded border border-border p-2">
+          <div className="inv-card-header flex items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border" style={{ borderColor: inv.corIdentificacao ?? '#8055bd' }}>
               {arte ? <img key={assetsTick} src={arte.url} alt={inv.imagemAltText || inv.apelido || inv.nome} className="h-full w-full object-cover" /> : <span className="text-xs text-muted-foreground">Sem arte</span>}
             </div>
-            <div><strong>{inv.apelido?.trim() || inv.nome}</strong><div className="text-xs text-muted-foreground">{inv.tipo === 'shikigami' ? 'Shikigami' : 'Corpo Amaldiçoado'} · PV {pvAtualExibido}/{pvMaximoExibido}{emHorda ? ' compartilhados' : ''} · Defesa {inv.defesa} · {inv.deslocamentoM} m · {inv.custoInvocacaoPE} PE · {inv.acoes.length} ações</div></div>
+            <div><h3>{inv.apelido?.trim() || inv.nome}</h3><p className="inv-card-kind">{inv.tipo === 'shikigami' ? 'Shikigami' : 'Corpo Amaldiçoado'} · {inv.acoes.length} ações</p><dl className="inv-card-hud" aria-label={'Valores de ' + inv.nome}><div><dt>PV{emHorda ? ' compartilhados' : ''}</dt><dd>{pvAtualExibido}/{pvMaximoExibido}</dd></div><div><dt>Defesa</dt><dd>{inv.defesa}</dd></div><div><dt>Movimento</dt><dd>{inv.deslocamentoM} m</dd></div><div><dt>Invocação</dt><dd>{inv.custoInvocacaoPE} PE</dd></div></dl></div>
           </div>
-          <div className={'basis-full text-xs ' + (derrotaPendente ? 'text-destructive' : estadoInstancia === 'caida' ? 'text-amber-300' : 'text-muted-foreground')}>Estado de combate: {rotuloEstado}{estadoInstancia === 'derrotada' && instancia ? ` (PV ${instancia.hpAtual})` : ''}</div>
-          {ehLiderHorda && <div className="basis-full text-xs text-amber-300">A Horda usa um único token, pool de PV e contribuição temporal. A dissipação fica bloqueada até definir como os PV gerais retornam às fichas individuais.</div>}
+          <div className="inv-acquisition-status basis-full text-xs" data-status={inv.aprovacaoMestre}>Aquisição: {inv.aprovacaoMestre === 'pendente' ? 'Aguardando aprovação do Mestre' : inv.aprovacaoMestre === 'rejeitada' ? 'Rejeitada — edite e solicite novamente' : 'Aprovada'}</div>
+          <div className={'basis-full text-xs ' + (derrotaPendente ? 'inv-error' : estadoInstancia === 'caida' ? 'inv-warning' : 'text-muted-foreground')}>Estado de combate: {rotuloEstado}{estadoInstancia === 'derrotada' && instancia ? ` (PV ${instancia.hpAtual})` : ''}</div>
+          {ehLiderHorda && <div className="basis-full text-xs inv-warning">A Horda usa um único token, pool de PV e contribuição temporal. A dissipação fica bloqueada até definir como os PV gerais retornam às fichas individuais.</div>}
+          {ehLiderHorda && tokenHorda?.invocationEffectiveSize && <div className="basis-full text-xs text-muted-foreground">Porte efetivo: {tokenHorda.invocationEffectiveSize}</div>}
+          {aguardandoRodadaHorda && <div className="basis-full text-xs inv-warning">Saiu da Horda com seus PV individuais. Aguarde a próxima rodada para invocar novamente.</div>}
+          {ehLiderHorda && instancia?.perdaMembrosHordaPendente && <div className="basis-full text-xs inv-warning">Perda de {instancia.perdaMembrosHordaPendente.quantidade} membro(s) aguardando resolução.</div>}
           {resolucaoDerrota && <div className="basis-full text-xs text-muted-foreground">
             {resolucaoDerrota.resultado === 'recuperada'
               ? resolucaoDerrota.pvRecuperados !== undefined
@@ -709,14 +686,14 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className="rounded border border-primary px-2 py-2 text-xs" onClick={() => resolverDerrota(inv.id, 'recuperada')}>Autorizar recuperação</button>
               {confirmandoPerdaDerrota === inv.id ? <>
-                <span className="text-xs text-destructive">Esta decisão arquiva a ficha sem possibilidade de invocá-la novamente.</span>
+                <span className="text-xs inv-error">Esta decisão arquiva a ficha sem possibilidade de invocá-la novamente.</span>
                 <button type="button" className="rounded border border-destructive px-2 py-2 text-xs" onClick={() => resolverDerrota(inv.id, 'perda_permanente')}>Confirmar perda permanente</button>
                 <button type="button" className="rounded border px-2 py-2 text-xs" onClick={() => setConfirmandoPerdaDerrota(null)}>Cancelar</button>
               </> : <button type="button" className="rounded border px-2 py-2 text-xs" onClick={() => setConfirmandoPerdaDerrota(inv.id)}>Declarar perda permanente</button>}
             </div>
           </div>}
           <div className="basis-full text-xs text-muted-foreground">{rotuloTempo}</div>
-          <div className="basis-full text-xs text-muted-foreground">Aquisição: {inv.aprovacaoMestre === 'pendente' ? 'Aguardando aprovação do Mestre' : inv.aprovacaoMestre === 'rejeitada' ? 'Rejeitada — edite e solicite novamente' : 'Aprovada'}</div>
+
           {ativo && automacoesAtivas > 0 && (
             <div className="basis-full flex flex-wrap items-center gap-2 text-xs">
               <span className="text-muted-foreground">Automações OMNI: {automacoesAtivas} regra(s) habilitada(s) · {instancia?.automacaoSuspensa ? 'suspensas nesta instância' : 'disponíveis conforme gatilho e política'}</span>
@@ -728,8 +705,8 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
               }}>{instancia?.automacaoSuspensa ? 'Retomar automações' : isMaster ? 'Mestre: suspender automações' : 'Suspender automações'}</button>}
             </div>
           )}
-          <div className={'basis-full text-xs ' + (estadoIntermediario.ok ? 'text-muted-foreground' : 'text-amber-300')}>Intermediário: {estadoIntermediario.ok ? 'disponível — ' + estadoIntermediario.resumo : 'pendente de validação — ' + estadoIntermediario.motivo}</div>
-          <div className={'basis-full text-xs ' + (alcanceConfigurado ? 'text-muted-foreground' : 'text-amber-300')}>Alcance de posicionamento: {alcanceConfigurado ? (inv.alcanceInvocacaoM ?? 0) + ' m' : 'não definido — edite a ficha antes de invocar'}</div>
+          <div className={'basis-full text-xs ' + (estadoIntermediario.ok ? 'text-muted-foreground' : 'inv-warning')}>Intermediário: {estadoIntermediario.ok ? 'disponível — ' + estadoIntermediario.resumo : 'pendente de validação — ' + estadoIntermediario.motivo}</div>
+          <div className={'basis-full text-xs ' + (alcanceConfigurado ? 'text-muted-foreground' : 'inv-warning')}>Alcance de posicionamento: {alcanceConfigurado ? (inv.alcanceInvocacaoM ?? 0) + ' m' : 'não definido — edite a ficha antes de invocar'}</div>
           {inv.origemAquisicao && <div className="basis-full text-xs text-muted-foreground">Origem da aquisição: {inv.origemAquisicao === 'interludio' ? 'Interlúdio' : inv.origemAquisicao}</div>}
           {inv.referenciaInterludio && <div className="basis-full text-xs text-muted-foreground">Referência do Interlúdio: {inv.referenciaInterludio}</div>}
           {isMaster && !emHorda && !estadoIntermediario.ok && podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada }) && !ativos.some(e => e.invocationId === inv.id) && (
@@ -738,7 +715,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
 
             </div>
           )}
-          {inv.aprovacaoMestre === 'rejeitada' && inv.motivoRejeicao && <div className="basis-full text-xs text-destructive">Motivo da rejeição: {inv.motivoRejeicao}</div>}
+          {inv.aprovacaoMestre === 'rejeitada' && inv.motivoRejeicao && <div className="basis-full text-xs inv-error">Motivo da rejeição: {inv.motivoRejeicao}</div>}
           {inv.aprovacaoMestre === 'rejeitada' && <button type="button" disabled={busyAprovacao} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => void reenviarAprovacao(inv.id)}>Solicitar nova aprovação</button>}
           {isMaster && inv.aprovacaoMestre === 'pendente' && (
             <div className="flex flex-wrap gap-2">
@@ -753,7 +730,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
               <button type="button" disabled={busyAprovacao || !motivosRejeicao[inv.id]?.trim()} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => void decidirAprovacao(inv.id, 'rejeitada')}>Rejeitar</button>
             </div>
           )}
-          <div className="flex shrink-0 flex-wrap gap-1">
+          <div className="inv-card-actions flex shrink-0 flex-wrap gap-2">
             {onEditFicha && <button type="button" disabled={emHorda || inv.perdaPermanente || busyAprovacao || inv.aprovacaoMestre === 'pendente'} title={emHorda ? 'A ficha está vinculada a uma Horda.' : undefined} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => onEditFicha(inv.id)}>Editar ficha</button>}
             {ativo ? (
               <>
@@ -769,7 +746,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
             )}
             <button type="button" disabled={emHorda || inv.perdaPermanente || ativo || derrotaPendente || inv.aprovacaoMestre === 'pendente' || busyAprovacao} title={emHorda ? 'A ficha está vinculada a uma Horda.' : undefined} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => remover(inv.id)}>Remover</button>
           </div>
-          <div className="basis-full space-y-2 border-t border-border/60 pt-2">
+          <InvocationDisclosure className="inv-card-disclosure basis-full space-y-2"><summary>Ataques personalizados · {inv.acoes.filter(a => a.tipo === 'ataque' || a.teste === 'ataque' || a.teste === 'resistencia').length}</summary>
             <div className="flex items-center justify-between gap-2">
               <strong className="text-xs">Ataques personalizados</strong>
               <button type="button" disabled={inv.perdaPermanente || emHorda} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => setEditando(editando === inv.id ? null : inv.id)}>Adicionar ataque</button>
@@ -786,34 +763,34 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                 <label className="text-xs">Dano<input aria-label="Dados de dano" value={formulaAtaque} onChange={e => setFormulaAtaque(e.target.value)} placeholder="2d12+1d6+3" className="w-full rounded border bg-background p-2" /></label>
                 <label className="text-xs">Alcance (m)<input type="number" min="0.1" step="0.5" value={alcanceAtaque} onChange={e => setAlcanceAtaque(Number(e.target.value))} className="w-full rounded border bg-background p-2" /></label>
                 <label className="text-xs">Bônus de acerto<input type="number" value={bonusAtaque} onChange={e => setBonusAtaque(Number(e.target.value))} className="w-full rounded border bg-background p-2" /></label>
-                <label className="text-xs">Tipo de ataque<select value={tipoAtaqueAtaque} onChange={e => setTipoAtaqueAtaque(e.target.value as 'corpo_a_corpo' | 'distancia')} className="w-full rounded border bg-background p-2"><option value="corpo_a_corpo">Corpo a corpo</option><option value="distancia">À distância</option></select></label>
-                <label className="text-xs">Atributo do ataque<select value={atributoAtaqueAtaque} onChange={e => setAtributoAtaqueAtaque(e.target.value as 'forca' | 'destreza')} className="w-full rounded border bg-background p-2"><option value="forca">Força</option><option value="destreza">Destreza</option></select></label>
-                <label className="text-xs">Atributo do dano<select value={atributoDanoAtaque} onChange={e => setAtributoDanoAtaque(e.target.value as typeof atributoDanoAtaque)} className="w-full rounded border bg-background p-2"><option value="">Igual ao atributo do ataque</option><option value="forca">Força</option><option value="destreza">Destreza</option><option value="constituicao">Constituição</option><option value="inteligencia">Inteligência</option><option value="sabedoria">Sabedoria</option><option value="presenca">Presença</option></select></label>
-                <label className="text-xs">Multiplicador do atributo no dano<select value={multiplicadorDanoAtributoAtaque} onChange={e => setMultiplicadorDanoAtributoAtaque(e.target.value)} className="w-full rounded border bg-background p-2"><option value="">Padrão do grau</option><option value="0">Nenhum</option><option value="1">1×</option><option value="2">2×</option></select></label>
+                <label className="text-xs">Tipo de ataque<InvocationSelect value={tipoAtaqueAtaque} onChange={e => setTipoAtaqueAtaque(e.target.value as 'corpo_a_corpo' | 'distancia')} className="w-full rounded border bg-background p-2"><option value="corpo_a_corpo">Corpo a corpo</option><option value="distancia">À distância</option></InvocationSelect></label>
+                <label className="text-xs">Atributo do ataque<InvocationSelect value={atributoAtaqueAtaque} onChange={e => setAtributoAtaqueAtaque(e.target.value as 'forca' | 'destreza')} className="w-full rounded border bg-background p-2"><option value="forca">Força</option><option value="destreza">Destreza</option></InvocationSelect></label>
+                <label className="text-xs">Atributo do dano<InvocationSelect value={atributoDanoAtaque} onChange={e => setAtributoDanoAtaque(e.target.value as typeof atributoDanoAtaque)} className="w-full rounded border bg-background p-2"><option value="">Igual ao atributo do ataque</option><option value="forca">Força</option><option value="destreza">Destreza</option><option value="constituicao">Constituição</option><option value="inteligencia">Inteligência</option><option value="sabedoria">Sabedoria</option><option value="presenca">Presença</option></InvocationSelect></label>
+                <label className="text-xs">Multiplicador do atributo no dano<InvocationSelect value={multiplicadorDanoAtributoAtaque} onChange={e => setMultiplicadorDanoAtributoAtaque(e.target.value)} className="w-full rounded border bg-background p-2"><option value="">Padrão do grau</option><option value="0">Nenhum</option><option value="1">1×</option><option value="2">2×</option></InvocationSelect></label>
                 <label className="text-xs">Margem de crítico<input type="number" min="2" max="20" value={margemCriticoAtaque} onChange={e => setMargemCriticoAtaque(Number(e.target.value))} className="w-full rounded border bg-background p-2" /></label>
                 <label className="text-xs">Multiplicador crítico<input type="number" min="1" max="5" value={multiplicadorCriticoAtaque} onChange={e => setMultiplicadorCriticoAtaque(Number(e.target.value))} className="w-full rounded border bg-background p-2" /></label>
-                <label className="text-xs">Tipo de dano<select value={tipoDanoAtaque} onChange={e => setTipoDanoAtaque(e.target.value as import('@/types').DamageType)} className="w-full rounded border bg-background p-2">
+                <label className="text-xs">Tipo de dano<InvocationSelect value={tipoDanoAtaque} onChange={e => setTipoDanoAtaque(e.target.value as import('@/types').DamageType)} className="w-full rounded border bg-background p-2">
                   {(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(d => <option key={d} value={d}>{d}</option>)}
-                </select></label>
+                </InvocationSelect></label>
                 <button type="button" disabled={inv.perdaPermanente || busyAprovacao || inv.aprovacaoMestre === 'pendente'} className="rounded bg-primary px-2 py-2 text-xs text-primary-foreground disabled:opacity-50" onClick={() => void adicionarAtaque(inv.id)}>Salvar ataque</button>
               </div>
             )}
-          </div>
+          </InvocationDisclosure>
           {ativos.some(e => e.invocationId === inv.id) && acoesDeAtaque(inv).length > 0 && (
             <div className="basis-full space-y-2 border-t border-border/60 pt-2">
               {acoesDeAtaque(inv).some(acao => !['multiplo', 'area'].includes(configOmniDaAcao(acao)?.tipo_alvo ?? 'unico')) && <label className="block text-xs">Alvo para ação individual
-                <select aria-label={`Alvo de ${inv.nome}`} className="mt-1 w-full rounded border border-input bg-background p-2"
+                <InvocationSelect aria-label={`Alvo de ${inv.nome}`} className="mt-1 w-full rounded border border-input bg-background p-2"
                   value={alvosAtaque[inv.id] ?? ''} onChange={e => setAlvosAtaque(v => ({ ...v, [inv.id]: e.target.value }))}>
                   <option value="">Selecione uma ficha ou invocação no mapa</option>
                   {alvosDisponiveis.filter(alvo => alvo.id !== `invoc:${token?.id}`).map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
-                </select>
+                </InvocationSelect>
               </label>}
               {acoesDeAtaque(inv).some(acao => configOmniDaAcao(acao)?.tipo_alvo === 'area') && <p className="text-xs text-muted-foreground">Ações em área: ao usar, posicione e confirme a forma no mapa. O raio em si usa o centro da invocação.</p>}
               {acoesDeAtaque(inv).filter(acao => configOmniDaAcao(acao)?.tipo_alvo === 'multiplo').map(acao => {
                 const chave = `${inv.id}:${acao.id}`;
                 const maxAlvos = configOmniDaAcao(acao)?.max_alvos ?? '?';
                 return <label key={acao.id} className="block text-xs">Alvos de {acao.nome} (até {maxAlvos})
-                  <select aria-label={`Alvos de ${acao.nome}`} multiple size={Math.min(5, Math.max(2, alvosDisponiveis.length))}
+                  <InvocationSelect aria-label={`Alvos de ${acao.nome}`} multiple size={Math.min(5, Math.max(2, alvosDisponiveis.length))}
                     className="mt-1 w-full rounded border border-input bg-background p-2"
                     value={alvosAtaqueMultiplo[chave] ?? []}
                     onChange={event => setAlvosAtaqueMultiplo(current => ({
@@ -821,7 +798,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                       [chave]: Array.from(event.currentTarget.selectedOptions, option => option.value),
                     }))}>
                     {alvosDisponiveis.filter(alvo => alvo.id !== `invoc:${token?.id}`).map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
-                  </select>
+                  </InvocationSelect>
                 </label>;
               })}
               <div className="flex flex-wrap gap-1">
@@ -843,7 +820,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
           {ativos.some(e => e.invocationId === inv.id) && (
             <div className="basis-full space-y-2 border-t border-border/60 pt-2">
               <label className="block text-xs">Teste de perícia do Shikigami
-                <select aria-label={`Perícia de ${inv.nome}`} className="mt-1 w-full rounded border border-input bg-background p-2"
+                <InvocationSelect aria-label={`Perícia de ${inv.nome}`} className="mt-1 w-full rounded border border-input bg-background p-2"
                   value={periciasSelecionadas[inv.id] ?? ''}
                   onChange={event => setPericiasSelecionadas(current => ({ ...current, [inv.id]: event.target.value }))}>
                   <option value="">Selecione uma perícia</option>
@@ -851,7 +828,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                     <option key={key} value={key}>{ROTULOS_PERICIAS[key]}{invocacaoTreinadaNaPericia(inv, key) ? ' · treinada' : ` · característica +${bonusPericiaCaracteristicas(inv, key)}`}</option>
                   ))}
                   {!Object.keys(SISTEMA_PERICIAS).some(key => invocacaoTreinadaNaPericia(inv, key)) && <option disabled value="">Sem perícias treinadas</option>}
-                </select>
+                </InvocationSelect>
               </label>
               <button type="button" disabled={!periciasSelecionadas[inv.id] || !!busyPericia[inv.id]}
                 onClick={() => void rolarPericia(inv.id)} className="rounded border px-2 py-1 text-xs disabled:opacity-50">
@@ -868,7 +845,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                 const multiplos = acao.efeitoSuporte?.alvos === 'multiplos';
                 return <div key={acao.id} className="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <label className="block text-xs">{acao.nome} · {acao.efeitoSuporte?.efeito}
-                    <select aria-label={`Alvo de suporte ${acao.nome}`} multiple={multiplos} className="mt-1 min-h-9 w-full rounded border border-input bg-background p-2"
+                    <InvocationSelect aria-label={`Alvo de suporte ${acao.nome}`} multiple={multiplos} className="mt-1 min-h-9 w-full rounded border border-input bg-background p-2"
                       value={multiplos ? alvos : (alvos[0] ?? '')}
                       onChange={event => {
                         const valores = multiplos
@@ -878,7 +855,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
                       }}>
                       <option value="">{multiplos ? 'Selecione um ou mais alvos no mapa' : 'Selecione uma ficha no mapa'}</option>
                       {opcoesAlvoSuporte.map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
-                    </select>
+                    </InvocationSelect>
                   </label>
                   <button type="button" disabled={busySuporte || alvos.length === 0} className="self-end rounded border border-primary px-2 py-2 text-xs disabled:opacity-50" onClick={() => void executarSuporte(inv.id, acao.id)}>
                     Usar suporte
@@ -890,18 +867,58 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
         </div>
         );
       })}
-      <div className="space-y-2 rounded border border-border p-2">
-        <strong>Adicionar invocação</strong>
+<div className="inv-library-utilities"><h3>Ferramentas da biblioteca</h3>
+      {controlador && <InvocationDisclosure className="inv-section space-y-2 p-3" aria-label="Criar Horda"><summary>Criar Horda</summary>
+
+        <p className="text-xs text-muted-foreground">Escolha um líder de Primeiro Grau ou inferior e membros de grau inferior ao dele. A Horda ocupa uma vaga e usa uma única ficha de PV; as ações vêm do líder.</p>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <label className="text-xs">Líder
+            <InvocationSelect aria-label="Líder da Horda" value={hordaLiderId} onChange={event => { setHordaLiderId(event.target.value); setHordaMembrosIds([]); }} className="mt-1 w-full rounded border border-input bg-background p-2">
+              <option value="">Escolha uma invocação</option>
+              {catalogo.filter(inv => inv.grau && inv.grau !== 'especial').map(inv => <option key={inv.id} value={inv.id} disabled={hordaModelosVinculados.has(inv.id) || ativos.some(token => token.invocationId === inv.id) || Boolean(inv.perdaPermanente) || !podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada })}>{inv.apelido?.trim() || inv.nome} · {inv.grau}</option>)}
+            </InvocationSelect>
+          </label>
+          <div className="text-xs">
+            <label className="block">Contribuição de tempo da Horda
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <input aria-label="Quantidade de tempo da Horda" type="number" min="0" step="any" value={hordaTempoQuantidade} onChange={event => setHordaTempoQuantidade(event.target.value)} placeholder="Quantidade" className="w-full rounded border border-input bg-background p-2" />
+                <input aria-label="Unidade de tempo da Horda" value={hordaTempoUnidade} onChange={event => setHordaTempoUnidade(event.target.value)} placeholder="segundos, turnos…" className="w-full rounded border border-input bg-background p-2" />
+              </div>
+            </label>
+            <span className="mt-1 block text-muted-foreground">Sem valor inicial ou limite máximo; informe a quantidade e a unidade a cada criação.</span>
+          </div>
+        </div>
+        {hordaLiderId && <fieldset className="space-y-1 rounded border border-border p-2">
+          <legend className="px-1 text-xs">Membros (limite: {Math.max(0, ativas - 1)})</legend>
+          {membrosHordaDisponiveis.length === 0
+            ? <p className="text-xs text-muted-foreground">Não há membros elegíveis. Confira o grau do líder e as fichas do catálogo.</p>
+            : membrosHordaDisponiveis.map(inv => {
+              const indisponivel = hordaModelosVinculados.has(inv.id) || ativos.some(token => token.invocationId === inv.id) || Boolean(inv.perdaPermanente) || !podeUsarVersaoAprovada({ estado: inv.aprovacaoMestre, versaoAtual: inv.versaoModelo, versaoAprovada: inv.versaoAprovada });
+              return <label key={inv.id} className="flex items-center gap-2 text-xs">
+                <input type="checkbox" aria-label={'Adicionar ' + inv.nome + ' à Horda'} checked={hordaMembrosIds.includes(inv.id)} disabled={indisponivel || !!carregandoArteId} onChange={event => setHordaMembrosIds(current => event.target.checked ? [...current, inv.id] : current.filter(id => id !== inv.id))} />
+                {inv.apelido?.trim() || inv.nome} · {inv.grau} · PV {inv.hpAtual}/{inv.hpMaximo}{indisponivel ? ' · indisponível' : ''}
+              </label>;
+            })}
+        </fieldset>}
+        {hordaPreview?.ok
+          ? <p className="text-xs" role="status">Prévia: PV compartilhados {hordaPreview.horda.pvAtual}/{hordaPreview.horda.pvMaximo} · custo {hordaPreview.horda.custoInvocacaoPE} PE · {hordaPreview.horda.quantidadeMembros} membro(s) · tempo único +{hordaTempoPreview.ok ? formatarSegundosTempoInvocacao(hordaTempoPreview.segundos) : '—'} s.</p>
+          : hordaLiderId && hordaMembrosIds.length > 0 && <p className="text-xs inv-warning" role="status">{hordaPreview && !hordaPreview.ok ? hordaPreview.motivo : 'Confira o grau e o tempo da composição.'}</p>}
+        <button type="button" className="rounded border border-primary px-3 py-2 text-xs disabled:opacity-50" disabled={!!carregandoArteId || !hordaPreview?.ok || !hordaTempoPreview.ok || !hordaMembrosIds.length} onClick={() => void formarHorda()}>
+          {carregandoArteId === 'horda' ? 'Preparando Horda…' : 'Posicionar Horda no mapa'}
+        </button>
+      </InvocationDisclosure>}
+      <InvocationDisclosure className="inv-section space-y-2 p-4">
+        <summary>Importar ou adicionar ficha rápida</summary>
         <label className="block text-xs">Importar do Grimório ou OMNI
-          <select value={fonte} onChange={e => setFonte(e.target.value)} className="mt-1 w-full rounded border border-input bg-background p-2">
+          <InvocationSelect value={fonte} onChange={e => setFonte(e.target.value)} className="mt-1 w-full rounded border border-input bg-background p-2">
             <option value="">Criar manualmente</option>
             {fontes.map(f => <option key={`${f.tipo}:${f.id}`} value={`${f.tipo}:${f.id}`}>{f.tipo === 'grimorio' ? 'Grimório' : 'OMNI'} — {f.nome}</option>)}
-          </select>
+          </InvocationSelect>
         </label>
         <label className="block text-xs">Tipo
-          <select value={tipo} onChange={e => setTipo(e.target.value as TipoInvocacaoControlador)} className="mt-1 w-full rounded border border-input bg-background p-2">
+          <InvocationSelect value={tipo} onChange={e => setTipo(e.target.value as TipoInvocacaoControlador)} className="mt-1 w-full rounded border border-input bg-background p-2">
             <option value="shikigami">Shikigami</option><option value="corpo_amaldicoado">Corpo Amaldiçoado</option>
-          </select>
+          </InvocationSelect>
         </label>
         {!escolhido && <>
           <label className="block text-xs">Nome<input value={nome} onChange={e => setNome(e.target.value)} className="mt-1 w-full rounded border border-input bg-background p-2" /></label>
@@ -913,10 +930,12 @@ export function ControladorInvocacoesSection({ character, onEditFicha }: { chara
         </>}
         <label className="block text-xs">Alcance de posicionamento (m)<input aria-label="Alcance de posicionamento" type="number" min="0" step="any" value={alcanceInvocacaoM} onChange={e => setAlcanceInvocacaoM(e.target.value)} className="mt-1 w-full rounded border bg-background p-2" /><span className="mt-1 block text-xs text-muted-foreground">Máxima distância entre o Controlador e o local escolhido no mapa.</span></label>
         <label className="block text-xs">Custo de invocação (PE)<input type="number" min="0" value={custoPE} onChange={e => setCustoPE(Number(e.target.value))} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        {erro && <p role="alert" className="text-xs text-destructive">{erro}</p>}
+
         <button type="button" disabled={busyAprovacao} onClick={() => void salvar()} className="rounded bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">Adicionar ao catálogo</button>
-      </div>
-      <p className="text-xs text-amber-600">{controlador ? `Progressão do livro: ${max} invocações; além disso exige Interlúdio. Limite simultâneo: ${ativas}.` : 'Outras especializações obtêm Shikigamis durante Interlúdios; podem manter apenas 1 invocação em campo por padrão.'}</p>
+      </InvocationDisclosure>
+</div>
+
+      <p className="text-xs inv-warning">{controlador ? `Progressão do livro: ${max} invocações; além disso exige Interlúdio. Limite simultâneo: ${ativas}.` : 'Outras especializações obtêm Shikigamis durante Interlúdios; podem manter apenas 1 invocação em campo por padrão.'}</p>
       <p className="text-xs text-muted-foreground">Invocar é uma Ação Livre por enquanto e gasta PE. Posicione as invocações clicando no mapa, dentro do alcance definido em cada ficha; um uso permite selecionar até duas. Reposicionamento custa uma Ação Bônus e ataques comandados gastam uma Ação Comum.</p>
     </div>
   );

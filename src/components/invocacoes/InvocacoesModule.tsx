@@ -1,3 +1,5 @@
+import { InvocationSelect } from "@/components/invocacoes/InvocationSelect";
+import "./invocations.css";
 import { useEffect, useMemo, useState } from "react";
 import { Ghost } from "lucide-react";
 import { ModuleHeader } from "@/components/ui/module-header";
@@ -31,7 +33,8 @@ export function InvocacoesModule() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="invocations-workspace inv-module-enter space-y-4">
+      <div className="inv-hero">
       <ModuleHeader
         icon={Ghost}
         title="Invocações"
@@ -39,9 +42,9 @@ export function InvocacoesModule() {
       />
 
       {role === "MASTER" && selectableCharacters.length > 0 && (
-        <label className="block max-w-xl text-sm">
+        <label className="inv-controller block max-w-xl text-sm">
           Personagem controlador
-          <select
+          <InvocationSelect
             aria-label="Personagem controlador"
             value={selectedCharacterId}
             onChange={(event) => setSelectedCharacterId(event.target.value)}
@@ -52,10 +55,11 @@ export function InvocacoesModule() {
                 {character.name}
               </option>
             ))}
-          </select>
+          </InvocationSelect>
         </label>
       )}
 
+      </div>
       {selectedCharacter ? (
         <ControladorShikigamisAba key={selectedCharacter.id} character={selectedCharacter} />
       ) : (

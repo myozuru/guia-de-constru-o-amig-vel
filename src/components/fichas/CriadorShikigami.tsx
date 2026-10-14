@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from "framer-motion";
+import { InvocationDisclosure } from "@/components/invocacoes/InvocationDisclosure";
+import { InvocationSelect } from "@/components/invocacoes/InvocationSelect";
+import { useEffect, useRef, useState } from 'react';
 import type { Character } from '@/types';
 import { DEFAULT_SAVING_THROWS } from '@/types';
 import { useCharacterStore } from '@/stores/useCharacterStore';
@@ -728,82 +731,118 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
     const auto = automaticos[key];
     return <div key={key} className="space-y-1 rounded border border-border p-2">
       <label className="block text-xs font-medium">{labelsDerivadas[key]}
-        <select aria-label={'Modo de ' + labelsDerivadas[key]} className="mt-1 w-full rounded border bg-background p-2" value={state.modo}
+        <InvocationSelect aria-label={'Modo de ' + labelsDerivadas[key]} className="mt-1 w-full rounded border bg-background p-2" value={state.modo}
           onChange={event => {
             const modo = event.target.value as ModoDerivado;
             atualizarDerivado(key, { modo, valorManual: state.valorManual ?? auto, motivo: state.motivo || 'Requer confirmação manual do modo legado.' });
           }}>
           <option value="automatico">Automático</option><option value="manual">Manual</option><option value="revisao_necessaria">Revisão necessária</option>
-        </select>
+        </InvocationSelect>
       </label>
       {state.modo === 'manual' && <label className="block text-xs">Valor manual
         <input aria-label={labelsDerivadas[key] + ' manual'} type="number" step="any" value={state.valorManual ?? ''} onChange={event => atualizarDerivado(key, { valorManual: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 w-full rounded border bg-background p-2" />
       </label>}
       {state.modo === 'automatico' && <p className="text-xs text-muted-foreground">Prévia: {auto}{key === 'deslocamentoM' ? ' m' : key === 'custoInvocacaoPE' ? ' PE' : ''}. Recalcula ao mudar grau, atributos ou nível.</p>}
-      {state.modo === 'revisao_necessaria' && <p className="text-xs text-amber-700">Valor preservado: {state.valorManual ?? 'não informado'}. Escolha automático ou manual para confirmar a origem.</p>}
+      {state.modo === 'revisao_necessaria' && <p className="text-xs inv-warning">Valor preservado: {state.valorManual ?? 'não informado'}. Escolha automático ou manual para confirmar a origem.</p>}
     </div>;
   };
   const renderExtra = (key: CampoExtra, label: string, unit: string, autoAvailable: boolean) => {
     const state = extrasDerivados[key];
     return <div key={key} className="space-y-1 rounded border border-border p-2">
       <label className="block text-xs font-medium">{label}
-        <select aria-label={'Modo de ' + label} className="mt-1 w-full rounded border bg-background p-2" value={state.modo}
+        <InvocationSelect aria-label={'Modo de ' + label} className="mt-1 w-full rounded border bg-background p-2" value={state.modo}
           onChange={event => atualizarExtra(key, { modo: event.target.value as ModoDerivado, motivo: state.motivo || 'Fórmula automática ainda não cadastrada.' })}>
           <option value="automatico">Automático</option><option value="manual">Manual</option><option value="revisao_necessaria">Revisão necessária</option>
-        </select>
+        </InvocationSelect>
       </label>
       {state.modo === 'manual' && <label className="block text-xs">Valor manual
         <input aria-label={label + ' manual'} type={key === 'resistencias' ? 'text' : 'number'} step="any" value={state.valorManual} onChange={event => atualizarExtra(key, { valorManual: event.target.value })} className="mt-1 w-full rounded border bg-background p-2" />
       </label>}
       {state.modo === 'automatico' && <p className="text-xs text-muted-foreground">{autoAvailable ? 'Cálculo automático configurado.' : 'Sem fórmula automática cadastrada; o valor fica sem cálculo nesta etapa.'}{unit ? ' ' + unit : ''}</p>}
-      {state.modo === 'revisao_necessaria' && <p className="text-xs text-amber-700">Valor preservado para revisão: {state.valorManual || 'não informado'}.</p>}
+      {state.modo === 'revisao_necessaria' && <p className="text-xs inv-warning">Valor preservado para revisão: {state.valorManual || 'não informado'}.</p>}
     </div>;
   };
 
-  return <div className="space-y-3 rounded-lg border border-border p-3 text-sm">
-    <div className="flex flex-wrap items-start justify-between gap-2">
+  const reduceMotion = useReducedMotion();
+  const [activeStep, setActiveStep] = useState(0);
+  const creationSteps = ['Identidade', 'Atributos e valores', 'Habilidades', 'Invocação e recursos', 'Avançado e revisão'];
+  const camposEmRevisao = [...Object.values(derivados), ...Object.values(extrasDerivados)].filter(item => item.modo === 'revisao_necessaria').length;
+  const valorHUD = (key: CampoDerivadoShikigami) => {
+    if (derivados[key].modo === 'revisao_necessaria') {
+      const preserved = derivados[key].valorManual;
+      return preserved !== null && preserved !== undefined && Number.isFinite(preserved) ? 'Revisar · ' + preserved : 'Revisar';
+    }
+    if (!resolvidos) return 'Revisar';
+    const value = key === 'hpMaximo' ? hpMaximoComCaracteristicas : valoresFinais[key];
+    return Number.isFinite(value) ? value : 'Revisar';
+  };
+  const mudarEtapa = (index: number) => setActiveStep(index);
+
+  const editorRootRef = useRef<HTMLDivElement>(null);
+  const previousStepRef = useRef(activeStep);
+  useEffect(() => {
+    if (previousStepRef.current === activeStep) return;
+    previousStepRef.current = activeStep;
+    editorRootRef.current?.querySelector<HTMLElement>('.inv-stage-panel:not([hidden]) .inv-stage-heading')?.focus({ preventScroll: true });
+  }, [activeStep]);
+  return <div ref={editorRootRef} className="inv-editor-root space-y-3 rounded-lg border border-border p-3 text-sm">
+    <div className="inv-editor-header">
+    <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h3 className="font-semibold">{isEditing ? 'Editar ficha de invocação' : 'Criador completo de Shikigami'}</h3>
-        <p className="text-xs text-muted-foreground">Ficha contínua com seções navegáveis. A submissão cria uma versão que precisa de aprovação do Mestre.</p></div>
+        <p className="text-xs text-muted-foreground">Cinco etapas para organizar a ficha. Navegar não salva; envie a versão ao Mestre ao finalizar.</p></div>
+      <div className="inv-editor-actions flex flex-wrap gap-2">
+      {activeStep === 4 && (<button type="button" disabled={salvando || aguardandoMestre} onClick={() => void salvar()} className="inv-primary disabled:opacity-50">{salvando ? 'Enviando…' : isEditing ? 'Salvar e solicitar nova aprovação' : 'Criar ficha e solicitar aprovação'}</button>)}
       {onCancel && <button type="button" className="rounded border px-3 py-2 text-xs" onClick={onCancel}>Cancelar edição</button>}
+      </div>
+    </div>
+    <dl className="inv-creator-hud" id="inv-creator-hud" aria-label="Resumo atual da ficha">
+      <div data-warning={pontosRestantes < 0 || undefined}><dt>Pontos restantes</dt><dd>{pontosRestantes}<small> / {grauRegra.pontos}</small></dd></div>
+      <div><dt>PV máximo</dt><dd>{valorHUD('hpMaximo')}</dd><small>{derivados.hpMaximo.modo === 'automatico' ? 'Prévia automática' : derivados.hpMaximo.modo === 'manual' ? 'Manual' : 'Pendente'}</small></div>
+      <div><dt>Defesa</dt><dd>{valorHUD('defesa')}</dd><small>{derivados.defesa.modo === 'automatico' ? 'Prévia automática' : derivados.defesa.modo === 'manual' ? 'Manual' : 'Pendente'}</small></div>
+      <div><dt>Invocação · PE</dt><dd>{valorHUD('custoInvocacaoPE')}</dd><small>{derivados.custoInvocacaoPE.modo === 'automatico' ? 'Prévia automática' : derivados.custoInvocacaoPE.modo === 'manual' ? 'Manual' : 'Pendente'}</small></div>
+    </dl>
+    {erro && <p role="alert" className="text-xs inv-error">{erro}</p>}
+    {mensagem && <p role="status" className="text-xs text-muted-foreground">{mensagem}</p>}
     </div>
     {aguardandoMestre && <p role="status" className="rounded border border-amber-500/50 p-2 text-xs">Esta versão está pendente. Aguarde o Mestre antes de editar.</p>}
-    <nav aria-label="Navegação das seções da ficha" className="flex flex-wrap gap-1 border-b border-border pb-2">
-      {['A Identidade','B Arte','C Evolução','D Atributos','E Derivados','F Treinamentos','G Ações','H Passivas','I Reações','J OMNI','K Autonomia','L Economia','M Tempo','N Recuperação','O Aprovação'].map((label, index) =>
-        <a key={label} href={'#sec-' + String.fromCharCode(65 + index)} className="rounded border px-2 py-1 text-xs">{label}</a>)}
+    <div className="inv-step-workspace">
+    <nav aria-label="Etapas da criação" className="inv-steps">
+      {creationSteps.map((title, index) => <button key={title} type="button" data-step={index + 1} aria-controls={'inv-step-panel-' + index} aria-current={activeStep === index ? 'step' : undefined} onClick={() => mudarEtapa(index)}><span className="inv-step-number" aria-hidden="true">{index + 1}</span><span>{title}</span></button>)}
     </nav>
-
-    <details id="sec-A" open className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">A · Identidade, origem e aquisição</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    <div className="inv-stage-content">
+<motion.section initial={false} animate={activeStep === 0 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="1" id="inv-step-panel-0" hidden={activeStep !== 0} aria-labelledby="inv-step-heading-0">
+      <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-0"><p className="inv-eyebrow">Etapa 1 de 5</p><h2>Identidade</h2><p>Dê nome à ficha e escolha o tipo e o grau. Arte e histórico podem ser ajustados aqui.</p></div>
+<InvocationDisclosure id="sec-A" open className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Identidade, origem e aquisição</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
         <label className="text-xs">Nome<input aria-label="Nome da invocação" maxLength={160} value={nome} onChange={event => setNome(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+        <label className="text-xs">Tipo<InvocationSelect value={tipo} onChange={event => setTipo(event.target.value as 'shikigami' | 'corpo_amaldicoado')} className="mt-1 w-full rounded border bg-background p-2"><option value="shikigami">Shikigami</option><option value="corpo_amaldicoado">Corpo amaldiçoado</option></InvocationSelect></label>
+        <label className="text-xs">Grau<InvocationSelect value={grau} onChange={event => setGrau(event.target.value as GrauShikigami)} className="mt-1 w-full rounded border bg-background p-2">{todosGraus.map(value => <option key={value} value={value}>{rotulosGraus[value]}{grausDisponiveis(character.level).includes(value) ? '' : ' · acima do nível atual'}</option>)}</InvocationSelect></label>
+
         <label className="text-xs">Apelido<input value={apelido} onChange={event => setApelido(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Tipo<select value={tipo} onChange={event => setTipo(event.target.value as 'shikigami' | 'corpo_amaldicoado')} className="mt-1 w-full rounded border bg-background p-2"><option value="shikigami">Shikigami</option><option value="corpo_amaldicoado">Corpo amaldiçoado</option></select></label>
+
         <label className="text-xs">Subcategoria<input value={subcategoria} onChange={event => setSubcategoria(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Responsável<input value={character.name} readOnly className="mt-1 w-full rounded border bg-muted p-2" /></label>
-        <label className="text-xs">Origem da ficha<select value={origemTipo} onChange={event => setOrigemTipo(event.target.value as ModoOrigem)} className="mt-1 w-full rounded border bg-background p-2"><option value="manual">Manual</option><option value="grimorio">Grimório</option><option value="omni">OMNI</option></select></label>
+        <InvocationDisclosure className="inv-secondary-disclosure sm:col-span-2"><summary>Origem, aquisição e histórico</summary><div className="inv-section-body">
+        <label className="text-xs">Origem da ficha<InvocationSelect value={origemTipo} onChange={event => setOrigemTipo(event.target.value as ModoOrigem)} className="mt-1 w-full rounded border bg-background p-2"><option value="manual">Manual</option><option value="grimorio">Grimório</option><option value="omni">OMNI</option></InvocationSelect></label>
         <label className="text-xs">ID de referência da origem<input value={origemReferencia} onChange={event => setOrigemReferencia(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Origem da aquisição<select value={origemAquisicao} onChange={event => setOrigemAquisicao(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definida</option><option value="interludio">Interlúdio</option><option value="livro">Referência do livro</option><option value="mestre">Decisão do Mestre</option><option value="outra">Outra</option></select></label>
+        <label className="text-xs">Origem da aquisição<InvocationSelect value={origemAquisicao} onChange={event => setOrigemAquisicao(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definida</option><option value="interludio">Interlúdio</option><option value="livro">Referência do livro</option><option value="mestre">Decisão do Mestre</option><option value="outra">Outra</option></InvocationSelect></label>
         <label className="text-xs">Referência do Interlúdio<input value={referenciaInterludio} onChange={event => setReferenciaInterludio(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Alcance de posicionamento (m)<input aria-label="Alcance de posicionamento" type="number" min="0" step="any" value={alcanceInvocacaoM} onChange={event => setAlcanceInvocacaoM(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /><span className="mt-1 block text-xs text-muted-foreground">Distância máxima entre o centro do Controlador e o centro da célula escolhida no mapa.</span></label>
-        <label className="text-xs">Intermediário<select value={intermediarioTipo} onChange={event => { setIntermediarioTipo(event.target.value as '' | 'talisma' | 'dispositivo' | 'tecnica'); setIntermediarioItem(''); }} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não configurado</option>{tipo === 'shikigami' ? <><option value="talisma">Talismã</option><option value="tecnica" disabled={!character.tecnicaAmaldicoada?.trim()}>Técnica inata do personagem</option></> : <option value="dispositivo">Dispositivo próprio do corpo</option>}</select></label>
-        {(intermediarioTipo === 'talisma' || intermediarioTipo === 'dispositivo') && <label className="text-xs">Item real do inventário<select value={intermediarioItem} onChange={event => setIntermediarioItem(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione um item</option>{inventarioDoDono.filter(item => item.entity.categoria === 'item' && (item.entity.slotType ?? 'nenhum') === 'nenhum').map(item => <option key={item.instanceId} value={item.instanceId}>{item.entity.nome} · {item.emMaos ? 'em mãos' : 'na mochila'}{item.quebrado ? ' · quebrado' : ''} · {item.instanceId.slice(0, 8)}</option>)}</select></label>}
-        {intermediarioTipo === 'tecnica' && <div className="space-y-1"><label className="block text-xs">Técnica amaldiçoada do personagem<input value={character.tecnicaAmaldicoada ?? ''} readOnly className="mt-1 w-full rounded border bg-muted p-2" /></label><p className="text-xs text-muted-foreground">A ficha precisa ser aprovada pelo Mestre para usar esta exceção ao talismã.</p></div>}
-        <p className="sm:col-span-2 text-xs text-muted-foreground">Cada item intermediário real vinculado ocupa 0,5 espaço de inventário quando a aquisição for aprovada.</p>
-        <p className="sm:col-span-2 text-xs text-amber-300">A ficha continua editável sem intermediário validado. Para invocar, o intermediário precisa ser compatível e disponível; divergências bloqueiam a invocação e podem ser corrigidas depois.</p>
         <label className="text-xs sm:col-span-2">Descrição<textarea value={descricao} onChange={event => setDescricao(event.target.value)} rows={3} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs sm:col-span-2">Histórico<textarea value={historico} onChange={event => setHistorico(event.target.value)} rows={4} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Grau<select value={grau} onChange={event => setGrau(event.target.value as GrauShikigami)} className="mt-1 w-full rounded border bg-background p-2">{todosGraus.map(value => <option key={value} value={value}>{rotulosGraus[value]}{grausDisponiveis(character.level).includes(value) ? '' : ' · acima do nível atual'}</option>)}</select></label>
-      </div>
-    </details>
 
-    <details id="sec-B" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">B · Arte, token e miniatura</summary>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+
+</div></InvocationDisclosure>
+      </div>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-B" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Arte, token e miniatura</summary>
+      <div className="inv-section-body mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs">Imagem principal<input type="file" accept="image/*" disabled={assetBusy} onChange={event => void uploadImagem(event.target.files?.[0], false)} className="mt-1 block w-full text-xs" /></label>
         <label className="text-xs">Imagem alternativa<input type="file" accept="image/*" disabled={assetBusy} onChange={event => void uploadImagem(event.target.files?.[0], true)} className="mt-1 block w-full text-xs" /></label>
         <label className="text-xs">Texto alternativo<input value={imagemAltText} onChange={event => setImagemAltText(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Cor de identificação<input type="color" value={corIdentificacao} onChange={event => setCorIdentificacao(event.target.value)} className="mt-1 h-10 w-full rounded border bg-background p-1" /></label>
-        <label className="text-xs">Forma do token<select value={formaToken} onChange={event => setFormaToken(event.target.value as 'ELLIPSE' | 'RECT')} className="mt-1 w-full rounded border bg-background p-2"><option value="ELLIPSE">Circular</option><option value="RECT">Retangular</option></select></label>
+        <label className="text-xs">Forma do token<InvocationSelect value={formaToken} onChange={event => setFormaToken(event.target.value as 'ELLIPSE' | 'RECT')} className="mt-1 w-full rounded border bg-background p-2"><option value="ELLIPSE">Circular</option><option value="RECT">Retangular</option></InvocationSelect></label>
         <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={nomeplate} onChange={event => setNomeplate(event.target.checked)} />Exibir plaqueta com o nome</label>
         <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded border" style={{ borderColor: corIdentificacao }}>
@@ -816,21 +855,22 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         </div>
       </div>
       {assetBusy && <p role="status" className="text-xs">Guardando imagem…</p>}
-      {assetErro && <p role="alert" className="text-xs text-destructive">{assetErro}</p>}
-    </details>
-
-    <details id="sec-C" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">C · Evolução e histórico de crescimento</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {assetErro && <p role="alert" className="text-xs inv-error">{assetErro}</p>}
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-C" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Evolução e histórico de crescimento</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
         <label className="text-xs">Nível de evolução (opcional)<input type="number" min="0" step="1" value={nivelEvolucao} onChange={event => setNivelEvolucao(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <div className="text-xs text-muted-foreground">Grau atual: {rotulosGraus[grau]}. Alterações de grau e atributos serão registradas ao salvar.</div>
       </div>
       <label className="mt-2 block text-xs">Nota desta evolução<textarea value={notaEvolucao} onChange={event => setNotaEvolucao(event.target.value)} rows={2} className="mt-1 w-full rounded border bg-background p-2" /></label>
       {(initial?.registroEvolucao?.length ?? 0) > 0 && <p className="mt-2 text-xs text-muted-foreground">Este modelo já tem {initial?.registroEvolucao?.length} registro(s) de evolução.</p>}
-    </details>
-
-    <details id="sec-D" open className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">D · Atributos, pontos e modificadores</summary>
+    </InvocationDisclosure>
+</motion.section>
+<motion.section initial={false} animate={activeStep === 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="2" id="inv-step-panel-1" hidden={activeStep !== 1} aria-labelledby="inv-step-heading-1">
+      <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-1"><p className="inv-eyebrow">Etapa 2 de 5</p><h2>Atributos e valores</h2><p>Distribua os pontos e confira os valores. Cada campo continua com seu modo automático, manual ou pendente de revisão.</p></div>
+<InvocationDisclosure id="sec-D" open className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Atributos, pontos e modificadores</summary>
       <p className="mt-2 text-xs">Pontos restantes: <strong>{pontosRestantes}</strong> de {grauRegra.pontos} · máximo de referência: {grauRegra.maximo}. Diferenças do livro aparecem como aviso.</p>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {ATRIBUTOS_SHIKIGAMI.map(key => <label key={key} className="text-xs">{rotulosAtributos[key]}
@@ -838,14 +878,13 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
           <span className="text-xs text-muted-foreground">Modificador {Number.isFinite(atributos[key]) ? modificadorAtributoShikigami(atributos[key]) : '—'}</span>
         </label>)}
       </div>
-    </details>
-
-    <details id="sec-E" open className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">E · Valores derivados e modo por campo</summary>
-      <p className="mt-2 text-xs text-muted-foreground">Cada campo mantém seu modo separadamente. Campos automáticos mostram prévia; os manuais não mudam quando atributos ou grau mudam. O alcance de posicionamento é definido acima e é diferente do alcance dos ataques.</p>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">{chavesDerivadas.map(renderDerivado)}</div>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-E" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Valores derivados e modo por campo</summary>
+      <p className="mt-2 text-xs text-muted-foreground">Cada campo mantém seu modo separadamente. Campos automáticos mostram prévia; os manuais não mudam quando atributos ou grau mudam. O alcance de posicionamento fica na etapa Invocação e é diferente do alcance dos ataques.</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">{chavesDerivadas.filter(key => key !== 'custoInvocacaoPE').map(renderDerivado)}</div>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        {renderExtra('custoSustentacaoPE', 'Custo de sustentação', 'PE', false)}
+
         {renderExtra('alcanceM', 'Alcance', 'm', false)}
         {renderExtra('resistencias', 'Resistências', '', false)}
       </div>
@@ -853,84 +892,85 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         <input type="number" step="any" min="0" max={hpMaximoComCaracteristicas} value={pvAtual || (!initial ? hpMaximoComCaracteristicas : '')} onChange={event => setPvAtual(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" />
         {bonusPVCaracteristicas({ grau, caracteristicas }) > 0 && <span className="mt-1 block text-xs text-muted-foreground">Inclui +{bonusPVCaracteristicas({ grau, caracteristicas })} PV da característica operacional.</span>}
       </label>
-      <label className="mt-2 block text-xs">Porte<select value={porte} onChange={event => setPorte(event.target.value as InvocacaoControlador['porte'])} className="mt-1 w-full rounded border bg-background p-2"><option>Pequeno</option><option>Médio</option><option>Grande</option></select></label>
-    </details>
-
-    <details id="sec-F" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">F · Treinamentos e prévia de rolagem</summary>
+      <label className="mt-2 block text-xs">Porte<InvocationSelect value={porte} onChange={event => setPorte(event.target.value as InvocacaoControlador['porte'])} className="mt-1 w-full rounded border bg-background p-2"><option>Pequeno</option><option>Médio</option><option>Grande</option></InvocationSelect></label>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-F" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Treinamentos e prévia de rolagem</summary>
       <div className="mt-3 space-y-2">
         <p className="text-xs">Perícias treinadas</p>
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
           {skills.map(key => <label key={key} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={periciasTreinadas.includes(key)} onChange={() => alternarPericia(key)} />{ROTULOS_PERICIAS[key]}</label>)}
         </div>
-        <label className="block text-xs">Atributo-base das perícias<select value={atributoBasePericias} onChange={event => setAtributoBasePericias(event.target.value as 'inteligencia' | 'sabedoria' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="inteligencia">Inteligência</option><option value="sabedoria">Sabedoria</option></select></label>
-        <label className="block text-xs">Ataque treinado<select value={tipoAtaqueTreinado} onChange={event => setTipoAtaqueTreinado(event.target.value as 'corpo_a_corpo' | 'distancia' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="corpo_a_corpo">Corpo a corpo</option><option value="distancia">À distância</option></select></label>
-        <label className="block text-xs">Atributo do ataque<select value={atributoAtaqueTreinado} onChange={event => setAtributoAtaqueTreinado(event.target.value as 'forca' | 'destreza' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="forca">Força</option><option value="destreza">Destreza</option></select></label>
+        <label className="block text-xs">Atributo-base das perícias<InvocationSelect value={atributoBasePericias} onChange={event => setAtributoBasePericias(event.target.value as 'inteligencia' | 'sabedoria' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="inteligencia">Inteligência</option><option value="sabedoria">Sabedoria</option></InvocationSelect></label>
+        <label className="block text-xs">Ataque treinado<InvocationSelect value={tipoAtaqueTreinado} onChange={event => setTipoAtaqueTreinado(event.target.value as 'corpo_a_corpo' | 'distancia' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="corpo_a_corpo">Corpo a corpo</option><option value="distancia">À distância</option></InvocationSelect></label>
+        <label className="block text-xs">Atributo do ataque<InvocationSelect value={atributoAtaqueTreinado} onChange={event => setAtributoAtaqueTreinado(event.target.value as 'forca' | 'destreza' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="forca">Força</option><option value="destreza">Destreza</option></InvocationSelect></label>
         <label className="block text-xs">Bônus extra do ataque<input type="number" step="any" value={ataqueTreinadoBonus} onChange={event => setAtaqueTreinadoBonus(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="block text-xs">Teste de resistência treinado<select value={resistenciaTreinada} onChange={event => setResistenciaTreinada(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option>{DEFAULT_SAVING_THROWS.filter(name => name !== 'Integridade').map(name => <option key={name} value={name}>{name}</option>)}{resistenciaTreinada === 'Integridade' && <option value="Integridade">Integridade · legado</option>}</select></label>
+        <label className="block text-xs">Teste de resistência treinado<InvocationSelect value={resistenciaTreinada} onChange={event => setResistenciaTreinada(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option>{DEFAULT_SAVING_THROWS.filter(name => name !== 'Integridade').map(name => <option key={name} value={name}>{name}</option>)}{resistenciaTreinada === 'Integridade' && <option value="Integridade">Integridade · legado</option>}</InvocationSelect></label>
         <label className="block text-xs">Bônus extra do teste<input type="number" step="any" value={bonusResistenciaTreinada} onChange={event => setBonusResistenciaTreinada(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <p className="rounded border border-border p-2 text-xs">Prévia de perícia: {atributoBasePericias ? '1d20 + ' + modificadorAtributoShikigami(atributos[atributoBasePericias]) + ' + ' + bonusTreinamento + ' = 1d20 + ' + (modificadorAtributoShikigami(atributos[atributoBasePericias]) + bonusTreinamento) : 'selecione o atributo-base para calcular'}.</p>
       </div>
-    </details>
-
-    <details id="sec-G" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">G · Catálogo de ações</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="text-xs">Execução<select value={acaoExecucao} onChange={event => setAcaoExecucao(event.target.value as 'manual' | 'omni' | 'referencia_omni')} className="mt-1 w-full rounded border bg-background p-2"><option value="manual">Manual</option><option value="omni">OMNI</option><option value="referencia_omni">Referência OMNI</option></select></label>
+    </InvocationDisclosure>
+</motion.section>
+<motion.section initial={false} animate={activeStep === 2 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="3" id="inv-step-panel-2" hidden={activeStep !== 2} aria-labelledby="inv-step-heading-2">
+      <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-2"><p className="inv-eyebrow">Etapa 3 de 5</p><h2>Habilidades</h2><p>Organize ações, passivas e reações. Os controles e avisos de cada habilidade permanecem disponíveis.</p></div>
+<InvocationDisclosure id="sec-G" open className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Catálogo de ações</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
+        <label className="text-xs">Execução<InvocationSelect value={acaoExecucao} onChange={event => setAcaoExecucao(event.target.value as 'manual' | 'omni' | 'referencia_omni')} className="mt-1 w-full rounded border bg-background p-2"><option value="manual">Manual</option><option value="omni">OMNI</option><option value="referencia_omni">Referência OMNI</option></InvocationSelect></label>
         {acaoExecucao === 'manual' ? <>
           <label className="text-xs">Nome<input value={acaoNome} onChange={event => setAcaoNome(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-          <label className="text-xs">Categoria<select value={acaoCategoria} onChange={event => setAcaoCategoria(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option><option value="acao_comum">Comum</option><option value="acao_simples">Simples</option><option value="acao_complexa">Complexa</option><option value="acao_bonus">Bônus</option><option value="movimento">Movimento</option><option value="livre">Livre</option><option value="reacao">Reação</option></select></label>
+          <label className="text-xs">Categoria<InvocationSelect value={acaoCategoria} onChange={event => setAcaoCategoria(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option><option value="acao_comum">Comum</option><option value="acao_simples">Simples</option><option value="acao_complexa">Complexa</option><option value="acao_bonus">Bônus</option><option value="movimento">Movimento</option><option value="livre">Livre</option><option value="reacao">Reação</option></InvocationSelect></label>
         </> : <>
-          <label className="text-xs">Entidade OMNI<select value={acaoOmniEntidade} onChange={event => { setAcaoOmniEntidade(event.target.value); setAcaoOmniId(''); setErro(''); }} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione uma entidade</option>{Object.values(entidades).map(entity => <option key={entity.id} value={entity.id}>{entity.nome}</option>)}</select></label>
-          <label className="text-xs">Ação OMNI<select value={acaoOmniId} onChange={event => selecionarAcaoOmni(event.target.value)} disabled={!entidadeOmniSelecionada} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione uma ação</option>{(entidadeOmniSelecionada?.acoesAtivas ?? []).map(action => <option key={action.id} value={action.id}>{action.nome}</option>)}</select></label>
+          <label className="text-xs">Entidade OMNI<InvocationSelect value={acaoOmniEntidade} onChange={event => { setAcaoOmniEntidade(event.target.value); setAcaoOmniId(''); setErro(''); }} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione uma entidade</option>{Object.values(entidades).map(entity => <option key={entity.id} value={entity.id}>{entity.nome}</option>)}</InvocationSelect></label>
+          <label className="text-xs">Ação OMNI<InvocationSelect value={acaoOmniId} onChange={event => selecionarAcaoOmni(event.target.value)} disabled={!entidadeOmniSelecionada} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione uma ação</option>{(entidadeOmniSelecionada?.acoesAtivas ?? []).map(action => <option key={action.id} value={action.id}>{action.nome}</option>)}</InvocationSelect></label>
           <p className="sm:col-span-2 rounded border border-border p-2 text-xs text-muted-foreground">A entidade OMNI define nome, categoria, teste, dano, alcance, bônus e custo. A ficha do Shikigami define seus atributos; distribua o custo fixo de PE entre controlador e recurso próprio.</p>
-          {previewOmni && !previewOmni.ok && <p role="alert" className="sm:col-span-2 text-xs text-destructive">{previewOmni.motivo}</p>}
+          {previewOmni && !previewOmni.ok && <p role="alert" className="sm:col-span-2 text-xs inv-error">{previewOmni.motivo}</p>}
         </>}
-        {acaoExecucao === 'manual' && <label className="text-xs">Tipo de ação<select value={acaoTipo} onChange={event => {
+        {acaoExecucao === 'manual' && <label className="text-xs">Tipo de ação<InvocationSelect value={acaoTipo} onChange={event => {
           const next = event.target.value as NonNullable<AcaoFicha['tipo']>;
           setAcaoTipo(next);
           setAcaoTeste(next === 'ataque' ? 'ataque' : 'nenhum');
-        }} className="mt-1 w-full rounded border bg-background p-2"><option value="ataque">Ataque</option><option value="habilidade">Habilidade</option><option value="movimento">Movimento</option><option value="bonus">Bônus</option><option value="suporte">Suporte</option></select></label>}
+        }} className="mt-1 w-full rounded border bg-background p-2"><option value="ataque">Ataque</option><option value="habilidade">Habilidade</option><option value="movimento">Movimento</option><option value="bonus">Bônus</option><option value="suporte">Suporte</option></InvocationSelect></label>}
         {acaoExecucao === 'manual' && acaoTipo === 'suporte' && <>
-          <label className="text-xs">Efeito tabelado<select value={acaoEfeitoSuporte} onChange={event => setAcaoEfeitoSuporte(event.target.value as typeof acaoEfeitoSuporte)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option><option value="cura">Cura / PVT</option><option value="defesa">Bônus de Defesa</option><option value="acerto">Bônus de Acerto</option><option value="dano_adicional">Dano adicional no próximo ataque</option><option value="reducao_dano">Redução de Dano</option></select></label>
+          <label className="text-xs">Efeito tabelado<InvocationSelect value={acaoEfeitoSuporte} onChange={event => setAcaoEfeitoSuporte(event.target.value as typeof acaoEfeitoSuporte)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option><option value="cura">Cura / PVT</option><option value="defesa">Bônus de Defesa</option><option value="acerto">Bônus de Acerto</option><option value="dano_adicional">Dano adicional no próximo ataque</option><option value="reducao_dano">Redução de Dano</option></InvocationSelect></label>
           {acaoEfeitoSuporte === 'cura' && <>
-            <label className="text-xs">Alvos da cura<select value={acaoAlvosSuporte} onChange={event => setAcaoAlvosSuporte(event.target.value as 'unico' | 'multiplos')} className="mt-1 w-full rounded border bg-background p-2"><option value="unico">Alvo único</option><option value="multiplos">Múltiplos alvos</option></select></label>
-            <label className="text-xs">Atributo somado à cura<select value={acaoAtributoCura} onChange={event => setAcaoAtributoCura(event.target.value as 'sabedoria' | 'presenca')} className="mt-1 w-full rounded border bg-background p-2"><option value="sabedoria">Sabedoria</option><option value="presenca">Presença</option></select></label>
+            <label className="text-xs">Alvos da cura<InvocationSelect value={acaoAlvosSuporte} onChange={event => setAcaoAlvosSuporte(event.target.value as 'unico' | 'multiplos')} className="mt-1 w-full rounded border bg-background p-2"><option value="unico">Alvo único</option><option value="multiplos">Múltiplos alvos</option></InvocationSelect></label>
+            <label className="text-xs">Atributo somado à cura<InvocationSelect value={acaoAtributoCura} onChange={event => setAcaoAtributoCura(event.target.value as 'sabedoria' | 'presenca')} className="mt-1 w-full rounded border bg-background p-2"><option value="sabedoria">Sabedoria</option><option value="presenca">Presença</option></InvocationSelect></label>
           </>}
-          {acaoEfeitoSuporte === 'reducao_dano' && <label className="text-xs">Tipos de dano cobertos (Ctrl/Cmd para vários)<select multiple value={acaoTiposDanoRD} onChange={event => setAcaoTiposDanoRD(Array.from(event.target.selectedOptions, option => option.value as import('@/types').DamageType))} className="mt-1 min-h-24 w-full rounded border bg-background p-2">{(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}</select></label>}
+          {acaoEfeitoSuporte === 'reducao_dano' && <label className="text-xs">Tipos de dano cobertos (marque as opções desejadas)<InvocationSelect multiple value={acaoTiposDanoRD} onChange={event => setAcaoTiposDanoRD(Array.from(event.target.selectedOptions, option => option.value as import('@/types').DamageType))} className="mt-1 min-h-24 w-full rounded border bg-background p-2">{(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}</InvocationSelect></label>}
           <p className="text-xs text-muted-foreground">A cura exige Ação Complexa. Defesa e Acerto usam Ação Simples; Dano adicional e RD aceitam ação simples ou complexa. O alcance do auxílio é 1,5 m por padrão; cure usa o alcance do grau.</p>
         </>}
         {acaoExecucao === 'manual' && <>
-          <label className="text-xs">Rolagem da ação<select value={acaoTeste} onChange={event => setAcaoTeste(event.target.value as 'nenhum' | 'ataque' | 'resistencia')} className="mt-1 w-full rounded border bg-background p-2"><option value="nenhum">Sem rolagem automática</option><option value="ataque">Ataque contra Defesa</option><option value="resistencia">Teste de Resistência do alvo</option></select></label>
+          <label className="text-xs">Rolagem da ação<InvocationSelect value={acaoTeste} onChange={event => setAcaoTeste(event.target.value as 'nenhum' | 'ataque' | 'resistencia')} className="mt-1 w-full rounded border bg-background p-2"><option value="nenhum">Sem rolagem automática</option><option value="ataque">Ataque contra Defesa</option><option value="resistencia">Teste de Resistência do alvo</option></InvocationSelect></label>
           <label className="text-xs">Dano ou efeito<input aria-label="Fórmula de dano" value={acaoDano} onChange={event => setAcaoDano(event.target.value)} placeholder="Ex.: 2d12+1d6+3" className="mt-1 w-full rounded border bg-background p-2" /><span className="mt-1 block text-muted-foreground">O modificador do atributo é somado separadamente.</span></label>
         </>}
         {acaoTeste === 'ataque' && <>
-          <label className="text-xs">Tipo de ataque<select value={acaoTipoAtaque} onChange={event => setAcaoTipoAtaque(event.target.value as 'corpo_a_corpo' | 'distancia')} className="mt-1 w-full rounded border bg-background p-2"><option value="corpo_a_corpo">Corpo a corpo</option><option value="distancia">À distância</option></select></label>
-          <label className="text-xs">Atributo do ataque<select value={acaoAtributoAtaque} onChange={event => setAcaoAtributoAtaque(event.target.value as 'forca' | 'destreza')} className="mt-1 w-full rounded border bg-background p-2"><option value="forca">Força</option><option value="destreza">Destreza</option></select></label>
+          <label className="text-xs">Tipo de ataque<InvocationSelect value={acaoTipoAtaque} onChange={event => setAcaoTipoAtaque(event.target.value as 'corpo_a_corpo' | 'distancia')} className="mt-1 w-full rounded border bg-background p-2"><option value="corpo_a_corpo">Corpo a corpo</option><option value="distancia">À distância</option></InvocationSelect></label>
+          <label className="text-xs">Atributo do ataque<InvocationSelect value={acaoAtributoAtaque} onChange={event => setAcaoAtributoAtaque(event.target.value as 'forca' | 'destreza')} className="mt-1 w-full rounded border bg-background p-2"><option value="forca">Força</option><option value="destreza">Destreza</option></InvocationSelect></label>
           <label className="text-xs">Margem de crítico<input type="number" min="2" max="20" step="1" value={acaoMargemCritico} onChange={event => setAcaoMargemCritico(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
           <label className="text-xs">Multiplicador crítico<input type="number" min="1" max="5" step="1" value={acaoMultiplicadorCritico} onChange={event => setAcaoMultiplicadorCritico(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         </>}
         {acaoTeste === 'resistencia' && <>
-          {acaoExecucao === 'manual' && <label className="text-xs">TR do alvo<select value={acaoResistenciaAlvo} onChange={event => setAcaoResistenciaAlvo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2">{DEFAULT_SAVING_THROWS.map(nome => <option key={nome} value={nome}>{nome}</option>)}</select></label>}
-          <label className="text-xs">Atributo da CD<select value={acaoAtributoCD} onChange={event => setAcaoAtributoCD(event.target.value as keyof AtributosShikigami)} className="mt-1 w-full rounded border bg-background p-2">{ATRIBUTOS_SHIKIGAMI.map(atributo => <option key={atributo} value={atributo}>{rotulosAtributos[atributo]}</option>)}</select></label>
-          {acaoExecucao === 'manual' && <label className="text-xs">Dano no sucesso do TR<select value={acaoDanoNoSucesso} onChange={event => setAcaoDanoNoSucesso(event.target.value as 'nenhum' | 'metade')} className="mt-1 w-full rounded border bg-background p-2"><option value="nenhum">Nenhum</option><option value="metade">Metade</option></select></label>}
+          {acaoExecucao === 'manual' && <label className="text-xs">TR do alvo<InvocationSelect value={acaoResistenciaAlvo} onChange={event => setAcaoResistenciaAlvo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2">{DEFAULT_SAVING_THROWS.map(nome => <option key={nome} value={nome}>{nome}</option>)}</InvocationSelect></label>}
+          <label className="text-xs">Atributo da CD<InvocationSelect value={acaoAtributoCD} onChange={event => setAcaoAtributoCD(event.target.value as keyof AtributosShikigami)} className="mt-1 w-full rounded border bg-background p-2">{ATRIBUTOS_SHIKIGAMI.map(atributo => <option key={atributo} value={atributo}>{rotulosAtributos[atributo]}</option>)}</InvocationSelect></label>
+          {acaoExecucao === 'manual' && <label className="text-xs">Dano no sucesso do TR<InvocationSelect value={acaoDanoNoSucesso} onChange={event => setAcaoDanoNoSucesso(event.target.value as 'nenhum' | 'metade')} className="mt-1 w-full rounded border bg-background p-2"><option value="nenhum">Nenhum</option><option value="metade">Metade</option></InvocationSelect></label>}
         </>}
         {acaoTeste !== 'nenhum' && <>
-          <label className="text-xs">Atributo do dano<select value={acaoAtributoDano} onChange={event => setAcaoAtributoDano(event.target.value as keyof AtributosShikigami | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Igual ao atributo do ataque/CD</option>{ATRIBUTOS_SHIKIGAMI.map(atributo => <option key={atributo} value={atributo}>{rotulosAtributos[atributo]}</option>)}</select></label>
-          <label className="text-xs">Multiplicador do atributo no dano<select value={acaoMultiplicadorDanoAtributo} onChange={event => setAcaoMultiplicadorDanoAtributo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Padrão do grau</option><option value="0">Nenhum</option><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option><option value="5">5×</option></select></label>
+          <label className="text-xs">Atributo do dano<InvocationSelect value={acaoAtributoDano} onChange={event => setAcaoAtributoDano(event.target.value as keyof AtributosShikigami | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Igual ao atributo do ataque/CD</option>{ATRIBUTOS_SHIKIGAMI.map(atributo => <option key={atributo} value={atributo}>{rotulosAtributos[atributo]}</option>)}</InvocationSelect></label>
+          <label className="text-xs">Multiplicador do atributo no dano<InvocationSelect value={acaoMultiplicadorDanoAtributo} onChange={event => setAcaoMultiplicadorDanoAtributo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Padrão do grau</option><option value="0">Nenhum</option><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option><option value="5">5×</option></InvocationSelect></label>
         </>}
         {acaoExecucao === 'manual' && <>
-          <label className="text-xs">Tipo de dano<select value={acaoTipoDano} onChange={event => setAcaoTipoDano(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option>{(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+          <label className="text-xs">Tipo de dano<InvocationSelect value={acaoTipoDano} onChange={event => setAcaoTipoDano(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option>{(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(value => <option key={value} value={value}>{value}</option>)}</InvocationSelect></label>
           <label className="text-xs">Alcance (m)<input type="number" step="any" value={acaoAlcance} onChange={event => setAcaoAlcance(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
           <label className="text-xs">Bônus de acerto<input type="number" step="any" value={acaoBonus} onChange={event => setAcaoBonus(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         </>}
         <label className="text-xs">Custo total em PE<input type="number" min="0" step="any" readOnly={acaoExecucao !== 'manual'} value={acaoCusto} onChange={event => setAcaoCusto(event.target.value)} className="mt-1 w-full rounded border bg-background p-2 read-only:opacity-70" /></label>
         <label className="text-xs">PE debitado do dono<input type="number" min="0" step="any" value={acaoCustoDonoPE} onChange={event => setAcaoCustoDonoPE(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Recurso debitado da invocação<select value={acaoCustoRecursoId} onChange={event => setAcaoCustoRecursoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Nenhum</option>{recursos.map(recurso => <option key={recurso.id} value={recurso.id}>{recurso.nome} · {recurso.id}</option>)}</select></label>
+        <label className="text-xs">Recurso debitado da invocação<InvocationSelect value={acaoCustoRecursoId} onChange={event => setAcaoCustoRecursoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Nenhum</option>{recursos.map(recurso => <option key={recurso.id} value={recurso.id}>{recurso.nome} · {recurso.id}</option>)}</InvocationSelect></label>
         <label className="text-xs">Quantidade do recurso próprio<input type="number" min="0" step="any" value={acaoCustoRecurso} onChange={event => setAcaoCustoRecurso(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Execução do comando<select value={acaoModoCusto} onChange={event => setAcaoModoCusto(event.target.value as 'manual' | 'evento_automatico')} className="mt-1 w-full rounded border bg-background p-2"><option value="manual">Manual, sob comando</option><option value="evento_automatico">Somente por evento automático</option></select></label>
+        <label className="text-xs">Execução do comando<InvocationSelect value={acaoModoCusto} onChange={event => setAcaoModoCusto(event.target.value as 'manual' | 'evento_automatico')} className="mt-1 w-full rounded border bg-background p-2"><option value="manual">Manual, sob comando</option><option value="evento_automatico">Somente por evento automático</option></InvocationSelect></label>
         <label className="text-xs">Recarga em turnos ou rodadas<input type="number" min="1" step="1" value={acaoRecargaQuantidade} onChange={event => setAcaoRecargaQuantidade(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Marco da recarga<select value={acaoRecargaUnidade} onChange={event => setAcaoRecargaUnidade(event.target.value as 'inicio_turno_dono' | 'inicio_rodada' | 'manual' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Sem recarga</option><option value="inicio_turno_dono">Turnos do dono</option><option value="inicio_rodada">Rodadas</option><option value="manual">Manual</option></select></label>
+        <label className="text-xs">Marco da recarga<InvocationSelect value={acaoRecargaUnidade} onChange={event => setAcaoRecargaUnidade(event.target.value as 'inicio_turno_dono' | 'inicio_rodada' | 'manual' | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Sem recarga</option><option value="inicio_turno_dono">Turnos do dono</option><option value="inicio_rodada">Rodadas</option><option value="manual">Manual</option></InvocationSelect></label>
         {acaoExecucao === 'manual' && <label className="text-xs">Alvo<input value={acaoAlvo} onChange={event => setAcaoAlvo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>}
         <button type="button" className="self-end rounded bg-primary px-3 py-2 text-xs text-primary-foreground" onClick={adicionarAcao}>Adicionar ação</button>
       </div>
@@ -940,17 +980,16 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         setReacoes(previous => previous.filter(item => item.acaoId !== action.id));
         setCustosComandos(previous => { const next = { ...previous }; delete next[action.id]; return next; });
       }}>Remover</button></li>)}</ul>
-    </details>
-
-    <details id="sec-H" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">H · Passivas e características condicionais</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-H" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Passivas e características condicionais</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
         <label className="flex items-center gap-2 text-xs sm:col-span-2"><input type="checkbox" checked={possuiEnergiaReversa} onChange={event => setPossuiEnergiaReversa(event.target.checked)} />Capacidade inata de Energia Reversa (permite cura real)</label>
         <label className="text-xs">Nome<input value={caracteristicaNome} onChange={event => setCaracteristicaNome(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Descrição<textarea value={caracteristicaDescricao} onChange={event => setCaracteristicaDescricao(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Efeito operacional<select value={caracteristicaEfeito} onChange={event => setCaracteristicaEfeito(event.target.value as typeof caracteristicaEfeito)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Somente descritiva</option><option value="pv_maximo">Aumento de PV máximo</option><option value="bonus_pericia">Bônus em perícia específica</option><option value="reducao_dano">RD contra tipo específico</option></select></label>
-        {caracteristicaEfeito === 'bonus_pericia' && <label className="text-xs">Perícia<select value={caracteristicaPericia} onChange={event => setCaracteristicaPericia(event.target.value)} className="mt-1 w-full rounded border bg-background p-2">{Object.keys(SISTEMA_PERICIAS).map(key => <option key={key} value={key}>{ROTULOS_PERICIAS[key as keyof typeof ROTULOS_PERICIAS] ?? key}</option>)}</select></label>}
-        {caracteristicaEfeito === 'reducao_dano' && <label className="text-xs">Tipo de dano<select value={caracteristicaTipoDano} onChange={event => setCaracteristicaTipoDano(event.target.value as import('@/types').DamageType)} className="mt-1 w-full rounded border bg-background p-2">{(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}</select></label>}
+        <label className="text-xs">Efeito operacional<InvocationSelect value={caracteristicaEfeito} onChange={event => setCaracteristicaEfeito(event.target.value as typeof caracteristicaEfeito)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Somente descritiva</option><option value="pv_maximo">Aumento de PV máximo</option><option value="bonus_pericia">Bônus em perícia específica</option><option value="reducao_dano">RD contra tipo específico</option></InvocationSelect></label>
+        {caracteristicaEfeito === 'bonus_pericia' && <label className="text-xs">Perícia<InvocationSelect value={caracteristicaPericia} onChange={event => setCaracteristicaPericia(event.target.value)} className="mt-1 w-full rounded border bg-background p-2">{Object.keys(SISTEMA_PERICIAS).map(key => <option key={key} value={key}>{ROTULOS_PERICIAS[key as keyof typeof ROTULOS_PERICIAS] ?? key}</option>)}</InvocationSelect></label>}
+        {caracteristicaEfeito === 'reducao_dano' && <label className="text-xs">Tipo de dano<InvocationSelect value={caracteristicaTipoDano} onChange={event => setCaracteristicaTipoDano(event.target.value as import('@/types').DamageType)} className="mt-1 w-full rounded border bg-background p-2">{(['DCO','DP','DI','DA','DCG','DCC','DQ','DS','DAL','DNR','DE','DPS','DR','DN','DV'] as const).map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}</InvocationSelect></label>}
         <label className="text-xs">Condição<input value={caracteristicaCondicao} onChange={event => setCaracteristicaCondicao(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Bônus condicional<input value={caracteristicaBonus} onChange={event => setCaracteristicaBonus(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Redução de dano<input value={caracteristicaRD} onChange={event => setCaracteristicaRD(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
@@ -960,16 +999,15 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         <button type="button" className="self-end rounded bg-primary px-3 py-2 text-xs text-primary-foreground" onClick={adicionarCaracteristica}>Adicionar característica</button>
       </div>
       <ul className="mt-3 space-y-1">{caracteristicas.map(item => <li key={item.id} className="flex items-center justify-between gap-2 rounded border p-2 text-xs"><span>{item.nome}{item.condicao ? ' · se ' + item.condicao : ''}{item.bonus ? ' · bônus ' + item.bonus : ''}{item.reducaoDano ? ' · RD ' + item.reducaoDano : ''}{item.resistencia ? ' · resistência ' + item.resistencia : ''}{item.sentidos ? ' · sentidos ' + item.sentidos : ''}{item.propriedades ? ' · ' + item.propriedades : ''}{item.efeitoOperacional?.tipo === 'pv_maximo' ? ` · PV máximo +${bonusPVCaracteristicas({ grau, caracteristicas: [item] })}` : item.efeitoOperacional?.tipo === 'bonus_pericia' ? ` · +${bonusPericiaCaracteristicas({ grau, caracteristicas: [item] }, item.efeitoOperacional.pericia)} em ${ROTULOS_PERICIAS[item.efeitoOperacional.pericia as keyof typeof ROTULOS_PERICIAS] ?? item.efeitoOperacional.pericia}` : item.efeitoOperacional?.tipo === 'reducao_dano' ? ` · RD ${reducaoDanoCaracteristicas({ grau, caracteristicas: [item] }, item.efeitoOperacional.tipoDano)} contra ${item.efeitoOperacional.tipoDano}` : ''}</span><button type="button" className="rounded border px-2 py-1" onClick={() => setCaracteristicas(previous => previous.filter(feature => feature.id !== item.id))}>Remover</button></li>)}</ul>
-    </details>
-
-    <details id="sec-I" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">I · Reações</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-I" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Reações</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
         <label className="text-xs">Ação OMNI reativa
-          <select value={reacaoAcaoId} onChange={event => setReacaoAcaoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2">
+          <InvocationSelect value={reacaoAcaoId} onChange={event => setReacaoAcaoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2">
             <option value="">Selecione uma ação da categoria Reação</option>
             {acoes.filter(action => action.categoriaAcao === 'reacao' && (action.tipoExecucao === 'omni' || action.tipoExecucao === 'referencia_omni')).map(action => <option key={action.id} value={action.id}>{action.nome}</option>)}
-          </select>
+          </InvocationSelect>
         </label>
         <button type="button" className="self-end rounded bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50" disabled={!reacaoAcaoId} onClick={adicionarReacao}>Vincular reação</button>
       </div>
@@ -982,11 +1020,80 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
           : String(item.nome ?? 'Reação antiga sem ação OMNI vinculada');
         return <li key={item.id} className="flex items-center justify-between gap-2 rounded border p-2 text-xs"><span>{reactionText}</span><button type="button" className="rounded border px-2 py-1" onClick={() => setReacoes(previous => previous.filter(reaction => reaction.id !== item.id))}>Remover</button></li>;
       })}</ul>
-    </details>
+    </InvocationDisclosure>
+</motion.section>
+<motion.section initial={false} animate={activeStep === 3 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="4" id="inv-step-panel-3" hidden={activeStep !== 3} aria-labelledby="inv-step-heading-3">
+      <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-3"><p className="inv-eyebrow">Etapa 4 de 5</p><h2>Invocação e recursos</h2><p>Defina como a ficha entra em campo, sua economia de ações e o tempo adicional.</p></div>
+<section className="inv-section inv-invocation-settings" aria-labelledby="invocation-settings-title">
+  <div className="inv-stage-section-title"><h3 id="invocation-settings-title">Como esta ficha entra em campo</h3><p>Confira o intermediário, o alcance e os custos antes de solicitar a aprovação.</p></div>
+  <div className="inv-section-body">
+        <label className="text-xs">Alcance de posicionamento (m)<input aria-label="Alcance de posicionamento" type="number" min="0" step="any" value={alcanceInvocacaoM} onChange={event => setAlcanceInvocacaoM(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /><span className="mt-1 block text-xs text-muted-foreground">Distância máxima entre o centro do Controlador e o centro da célula escolhida no mapa.</span></label>
+        <label className="text-xs">Intermediário<InvocationSelect value={intermediarioTipo} onChange={event => { setIntermediarioTipo(event.target.value as '' | 'talisma' | 'dispositivo' | 'tecnica'); setIntermediarioItem(''); }} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não configurado</option>{tipo === 'shikigami' ? <><option value="talisma">Talismã</option><option value="tecnica" disabled={!character.tecnicaAmaldicoada?.trim()}>Técnica inata do personagem</option></> : <option value="dispositivo">Dispositivo próprio do corpo</option>}</InvocationSelect></label>
+        {(intermediarioTipo === 'talisma' || intermediarioTipo === 'dispositivo') && <label className="text-xs">Item real do inventário<InvocationSelect value={intermediarioItem} onChange={event => setIntermediarioItem(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione um item</option>{inventarioDoDono.filter(item => item.entity.categoria === 'item' && (item.entity.slotType ?? 'nenhum') === 'nenhum').map(item => <option key={item.instanceId} value={item.instanceId}>{item.entity.nome} · {item.emMaos ? 'em mãos' : 'na mochila'}{item.quebrado ? ' · quebrado' : ''} · {item.instanceId.slice(0, 8)}</option>)}</InvocationSelect></label>}
+        {intermediarioTipo === 'tecnica' && <div className="space-y-1"><label className="block text-xs">Técnica amaldiçoada do personagem<input value={character.tecnicaAmaldicoada ?? ''} readOnly className="mt-1 w-full rounded border bg-muted p-2" /></label><p className="text-xs text-muted-foreground">A ficha precisa ser aprovada pelo Mestre para usar esta exceção ao talismã.</p></div>}
+        <p className="sm:col-span-2 text-xs text-muted-foreground">Cada item intermediário real vinculado ocupa 0,5 espaço de inventário quando a aquisição for aprovada.</p>
+        <p className="sm:col-span-2 text-xs inv-warning">A ficha continua editável sem intermediário validado. Para invocar, o intermediário precisa ser compatível e disponível; divergências bloqueiam a invocação e podem ser corrigidas depois.</p>
 
-    <details id="sec-J" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">J · OMNI, fórmulas e automações</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    {renderDerivado('custoInvocacaoPE')}
+        {renderExtra('custoSustentacaoPE', 'Custo de sustentação', 'PE', false)}
+  </div>
+</section>
+<InvocationDisclosure id="sec-L" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Economia de ações própria</summary>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {([
+          ['acaoComum', 'Ação comum'], ['acaoSimples', 'Ação simples'], ['acaoComplexa', 'Ação complexa'],
+          ['acaoMovimento', 'Ação de movimento'], ['acaoBonus', 'Ação bônus'], ['acaoLivre', 'Ação livre'], ['reacao', 'Reação'],
+        ] as const).map(([key, label]) =>
+          <div key={key} className="rounded border border-border p-2">
+            <label className="text-xs">{label}<input type="number" min="0" step="1" value={economia[key] ?? ''} onChange={event => setEconomia(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded border bg-background p-2" /></label>
+            <label className="mt-2 block text-xs">Reset<InvocationSelect value={resetEconomia[key] ?? ''} disabled={!economia[key]?.trim()} onChange={event => setResetEconomia(previous => {
+              const next = { ...previous };
+              if (event.target.value) next[key] = event.target.value as LimiteResetEconomiaInvocacao;
+              else delete next[key];
+              return next;
+            })} className="mt-1 w-full rounded border bg-background p-2 disabled:opacity-50">
+              <option value="">Sem reset automático</option>
+              <option value="inicio_turno_dono">No início do turno do dono</option>
+              <option value="inicio_rodada">No início da rodada</option>
+              <option value="inicio_combate">No início do combate</option>
+              <option value="manual">Manual</option>
+            </InvocationSelect></label>
+          </div>)}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">Saldos são próprios da instância. Cada categoria pode ter um reset independente; campos vazios não recebem limite nem reset por suposição.</p>
+      <div className="mt-4 border-t border-border pt-3">
+        <h4 className="font-medium">Recursos próprios e recargas</h4>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <label className="text-xs">ID estável (use “pe” para PE próprio)<input value={recursoId} onChange={event => setRecursoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+          <label className="text-xs">Nome do recurso<input value={recursoNome} onChange={event => setRecursoNome(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+          <label className="text-xs">Saldo ao invocar<input type="number" step="any" value={recursoInicial} onChange={event => setRecursoInicial(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+          <label className="text-xs">Saldo máximo (opcional)<input type="number" step="any" value={recursoMaximo} onChange={event => setRecursoMaximo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+          <label className="text-xs">Quantidade recuperada<input type="number" min="0" step="any" value={recursoRecarga} onChange={event => setRecursoRecarga(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+          <label className="text-xs">Marco da recarga<InvocationSelect value={recursoRecargaUnidade} onChange={event => setRecursoRecargaUnidade(event.target.value as LimiteResetEconomiaInvocacao | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Sem recarga automática</option><option value="inicio_turno_dono">Início do turno do dono</option><option value="inicio_rodada">Início da rodada</option><option value="inicio_combate">Início do combate</option><option value="manual">Manual</option></InvocationSelect></label>
+          <button type="button" className="self-end rounded bg-primary px-3 py-2 text-xs text-primary-foreground" onClick={adicionarRecurso}>Adicionar recurso</button>
+        </div>
+        <ul className="mt-3 space-y-1">{recursos.map(recurso => <li key={recurso.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-xs"><span>{recurso.nome} · ID {recurso.id} · inicial {recurso.valorInicial}{recurso.valorMaximo !== undefined ? ` / máximo ${recurso.valorMaximo}` : ''}{recurso.recargaConfigurada ? ` · +${recurso.recargaConfigurada.quantidade} em ${recurso.recargaConfigurada.unidade}` : ''}</span><button type="button" className="rounded border px-2 py-1" onClick={() => {
+          if (Object.values(custosComandos).some(custo => custo.debitos.some(debito => debito.recursoId === recurso.id))) { setErro('Este recurso está usado como custo de uma ação. Remova o débito antes de remover o recurso.'); return; }
+          setRecursos(previous => previous.filter(item => item.id !== recurso.id));
+        }}>Remover</button></li>)}</ul>
+      </div>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-M" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Tempo adicional por invocação</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
+        <label className="text-xs">Quantidade<input aria-label="Tempo adicional" type="number" min="0" step="any" value={tempoQuantidade} onChange={event => setTempoQuantidade(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
+        <label className="text-xs">Unidade<InvocationSelect aria-label="Unidade do tempo adicional" value={tempoUnidade} onChange={event => setTempoUnidade(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não configurado</option><option value="segundos">Segundos</option><option value="minutos">Minutos</option><option value="horas">Horas</option><option value="turnos">Turnos (6 s)</option><option value="rodadas">Rodadas (6 s)</option></InvocationSelect></label>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">Sem configuração, a invocação não recebe tempo extra. Turnos e rodadas equivalem a 6 s; o valor é concedido uma vez por instância.</p>
+    </InvocationDisclosure>
+</motion.section>
+<motion.section initial={false} animate={activeStep === 4 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="5" id="inv-step-panel-4" hidden={activeStep !== 4} aria-labelledby="inv-step-heading-4">
+      <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-4"><p className="inv-eyebrow">Etapa 5 de 5</p><h2>Avançado e revisão</h2><p>Ajuste OMNI e autonomia quando necessário. Revise os avisos e envie a versão ao Mestre.</p></div>
+<div className="inv-review-summary"><h3>Antes de enviar</h3><p>{camposEmRevisao} campo(s) com revisão necessária · {alertas.length} aviso(s) de regra.</p><p>A navegação entre etapas não salva a ficha. O botão de aprovação envia a versão completa ao Mestre.</p></div>
+<InvocationDisclosure id="sec-J" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">OMNI, fórmulas e automações</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
         <label className="text-xs">Chave OMNI<input value={omniChave} onChange={event => setOmniChave(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Fórmula<input value={omniFormula} onChange={event => setOmniFormula(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Efeito<textarea value={omniEfeito} onChange={event => setOmniEfeito(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
@@ -995,9 +1102,9 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         <label className="text-xs">Sustentação<textarea value={omniSustentacao} onChange={event => setOmniSustentacao(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Contadores<textarea value={omniContador} onChange={event => setOmniContador(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
         <label className="text-xs">Diagnósticos<textarea value={omniDiagnosticos} onChange={event => setOmniDiagnosticos(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Entidade OMNI<select value={omniGatilhoEntidade} onChange={event => { setOmniGatilhoEntidade(event.target.value); setOmniGatilhoId(''); setOmniAcaoId(''); }} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option>{Object.values(entidades).map(entity => <option key={entity.id} value={entity.id}>{entity.nome}</option>)}</select></label>
-        <label className="text-xs">Gatilho OMNI<select value={omniGatilhoId} onChange={event => setOmniGatilhoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option>{(entidadeAutomacao?.gatilhos ?? []).map(trigger => <option key={trigger.id} value={trigger.id}>{trigger.evento}</option>)}</select></label>
-        <label className="text-xs">Ação OMNI<select value={omniAcaoId} onChange={event => setOmniAcaoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option>{(entidadeAutomacao?.acoesAtivas ?? []).map(action => <option key={action.id} value={action.id}>{action.nome}</option>)}</select></label>
+        <label className="text-xs">Entidade OMNI<InvocationSelect value={omniGatilhoEntidade} onChange={event => { setOmniGatilhoEntidade(event.target.value); setOmniGatilhoId(''); setOmniAcaoId(''); }} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option>{Object.values(entidades).map(entity => <option key={entity.id} value={entity.id}>{entity.nome}</option>)}</InvocationSelect></label>
+        <label className="text-xs">Gatilho OMNI<InvocationSelect value={omniGatilhoId} onChange={event => setOmniGatilhoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option>{(entidadeAutomacao?.gatilhos ?? []).map(trigger => <option key={trigger.id} value={trigger.id}>{trigger.evento}</option>)}</InvocationSelect></label>
+        <label className="text-xs">Ação OMNI<InvocationSelect value={omniAcaoId} onChange={event => setOmniAcaoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Selecione</option>{(entidadeAutomacao?.acoesAtivas ?? []).map(action => <option key={action.id} value={action.id}>{action.nome}</option>)}</InvocationSelect></label>
         <button type="button" className="self-end rounded border px-3 py-2 text-xs" onClick={adicionarAutomacao}>Adicionar automação OMNI</button>
       </div>
       <ul className="mt-3 space-y-2">{automacoesOmni.map(item => <li key={item.id} className="space-y-2 rounded border p-2 text-xs">
@@ -1019,73 +1126,20 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         </label>
       </li>)}</ul>
       <p className="mt-2 text-xs text-muted-foreground">A automação só roda depois da aprovação do Mestre. Cada regra pode ser ativada ou pausada aqui; a condição aceita apenas comparações seguras sobre evento, dono, alvo e Shikigami.</p>
-    </details>
-
-    <details id="sec-K" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">K · Política de autonomia</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="text-xs">Modo<select value={autonomiaModo} onChange={event => setAutonomiaModo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="manual">Manual</option><option value="misto">Misto</option><option value="automatico">Automático</option></select></label>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-K" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Política de autonomia</summary>
+      <div className="inv-section-body mt-3 grid gap-2 sm:grid-cols-2">
+        <label className="text-xs">Modo<InvocationSelect value={autonomiaModo} onChange={event => setAutonomiaModo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definido</option><option value="manual">Manual</option><option value="misto">Misto</option><option value="automatico">Automático</option></InvocationSelect></label>
         <label className="text-xs">Prioridade de alvo<input value={autonomiaPrioridade} onChange={event => setAutonomiaPrioridade(event.target.value)} placeholder="IDs ou nomes, em ordem" className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Política de alvo<select value={autonomiaAlvo} onChange={event => setAutonomiaAlvo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definida</option><option value="manual">Escolha manual</option><option value="prioridade">Prioridade configurada</option><option value="ameaca_mais_proxima">Ameaça mais próxima</option></select></label>
-        <label className="text-xs">Política de custos<select value={autonomiaCusto} onChange={event => setAutonomiaCusto(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definida</option><option value="manual">Pular ações com custo (manual)</option><option value="permitir_pe">Permitir custos configurados</option><option value="preferir_sem_custo">Preferir ações sem custo</option></select></label>
+        <label className="text-xs">Política de alvo<InvocationSelect value={autonomiaAlvo} onChange={event => setAutonomiaAlvo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definida</option><option value="manual">Escolha manual</option><option value="prioridade">Prioridade configurada</option><option value="ameaca_mais_proxima">Ameaça mais próxima</option></InvocationSelect></label>
+        <label className="text-xs">Política de custos<InvocationSelect value={autonomiaCusto} onChange={event => setAutonomiaCusto(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não definida</option><option value="manual">Pular ações com custo (manual)</option><option value="permitir_pe">Permitir custos configurados</option><option value="preferir_sem_custo">Preferir ações sem custo</option></InvocationSelect></label>
         <label className="text-xs">Limite por rodada<input type="number" min="0" step="1" value={autonomiaLimite} onChange={event => setAutonomiaLimite(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">Regras com prioridade maior rodam primeiro. A seleção automática só ocorre no turno do dono, com alvo visível e dentro do alcance. Custos sem autorização explícita são pulados; esta etapa não abre confirmação manual.</p>
-    </details>
-
-    <details id="sec-L" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">L · Economia de ações própria</summary>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {([
-          ['acaoComum', 'Ação comum'], ['acaoSimples', 'Ação simples'], ['acaoComplexa', 'Ação complexa'],
-          ['acaoMovimento', 'Ação de movimento'], ['acaoBonus', 'Ação bônus'], ['acaoLivre', 'Ação livre'], ['reacao', 'Reação'],
-        ] as const).map(([key, label]) =>
-          <div key={key} className="rounded border border-border p-2">
-            <label className="text-xs">{label}<input type="number" min="0" step="1" value={economia[key] ?? ''} onChange={event => setEconomia(previous => ({ ...previous, [key]: event.target.value }))} className="mt-1 w-full rounded border bg-background p-2" /></label>
-            <label className="mt-2 block text-xs">Reset<select value={resetEconomia[key] ?? ''} disabled={!economia[key]?.trim()} onChange={event => setResetEconomia(previous => {
-              const next = { ...previous };
-              if (event.target.value) next[key] = event.target.value as LimiteResetEconomiaInvocacao;
-              else delete next[key];
-              return next;
-            })} className="mt-1 w-full rounded border bg-background p-2 disabled:opacity-50">
-              <option value="">Sem reset automático</option>
-              <option value="inicio_turno_dono">No início do turno do dono</option>
-              <option value="inicio_rodada">No início da rodada</option>
-              <option value="inicio_combate">No início do combate</option>
-              <option value="manual">Manual</option>
-            </select></label>
-          </div>)}
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">Saldos são próprios da instância. Cada categoria pode ter um reset independente; campos vazios não recebem limite nem reset por suposição.</p>
-      <div className="mt-4 border-t border-border pt-3">
-        <h4 className="font-medium">Recursos próprios e recargas</h4>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          <label className="text-xs">ID estável (use “pe” para PE próprio)<input value={recursoId} onChange={event => setRecursoId(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-          <label className="text-xs">Nome do recurso<input value={recursoNome} onChange={event => setRecursoNome(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-          <label className="text-xs">Saldo ao invocar<input type="number" step="any" value={recursoInicial} onChange={event => setRecursoInicial(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-          <label className="text-xs">Saldo máximo (opcional)<input type="number" step="any" value={recursoMaximo} onChange={event => setRecursoMaximo(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-          <label className="text-xs">Quantidade recuperada<input type="number" min="0" step="any" value={recursoRecarga} onChange={event => setRecursoRecarga(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-          <label className="text-xs">Marco da recarga<select value={recursoRecargaUnidade} onChange={event => setRecursoRecargaUnidade(event.target.value as LimiteResetEconomiaInvocacao | '')} className="mt-1 w-full rounded border bg-background p-2"><option value="">Sem recarga automática</option><option value="inicio_turno_dono">Início do turno do dono</option><option value="inicio_rodada">Início da rodada</option><option value="inicio_combate">Início do combate</option><option value="manual">Manual</option></select></label>
-          <button type="button" className="self-end rounded bg-primary px-3 py-2 text-xs text-primary-foreground" onClick={adicionarRecurso}>Adicionar recurso</button>
-        </div>
-        <ul className="mt-3 space-y-1">{recursos.map(recurso => <li key={recurso.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-xs"><span>{recurso.nome} · ID {recurso.id} · inicial {recurso.valorInicial}{recurso.valorMaximo !== undefined ? ` / máximo ${recurso.valorMaximo}` : ''}{recurso.recargaConfigurada ? ` · +${recurso.recargaConfigurada.quantidade} em ${recurso.recargaConfigurada.unidade}` : ''}</span><button type="button" className="rounded border px-2 py-1" onClick={() => {
-          if (Object.values(custosComandos).some(custo => custo.debitos.some(debito => debito.recursoId === recurso.id))) { setErro('Este recurso está usado como custo de uma ação. Remova o débito antes de remover o recurso.'); return; }
-          setRecursos(previous => previous.filter(item => item.id !== recurso.id));
-        }}>Remover</button></li>)}</ul>
-      </div>
-    </details>
-
-    <details id="sec-M" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">M · Tempo adicional por invocação</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="text-xs">Quantidade<input aria-label="Tempo adicional" type="number" min="0" step="any" value={tempoQuantidade} onChange={event => setTempoQuantidade(event.target.value)} className="mt-1 w-full rounded border bg-background p-2" /></label>
-        <label className="text-xs">Unidade<select aria-label="Unidade do tempo adicional" value={tempoUnidade} onChange={event => setTempoUnidade(event.target.value)} className="mt-1 w-full rounded border bg-background p-2"><option value="">Não configurado</option><option value="segundos">Segundos</option><option value="minutos">Minutos</option><option value="horas">Horas</option><option value="turnos">Turnos (6 s)</option><option value="rodadas">Rodadas (6 s)</option></select></label>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">Sem configuração, a invocação não recebe tempo extra. Turnos e rodadas equivalem a 6 s; o valor é concedido uma vez por instância.</p>
-    </details>
-
-    <details id="sec-N" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">N · Recuperação, PV negativos e dissipação</summary>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-N" className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Recuperação, PV negativos e dissipação</summary>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs">
         <li>Derrota definitiva ao atingir −100% do PV máximo.</li>
         <li>Cura acima de zero não levanta a invocação; exige a própria Ação de Movimento.</li>
@@ -1093,25 +1147,20 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
         <li>Derrota permanente preserva o saldo restante da contribuição.</li>
       </ul>
       <p className="mt-2 text-xs text-muted-foreground">Estas decisões são registradas no snapshot da ficha.</p>
-    </details>
-
-    <details id="sec-O" className="rounded border border-border p-2">
-      <summary className="cursor-pointer text-sm font-semibold">O · Aprovação, auditoria e compartilhamento</summary>
+    </InvocationDisclosure>
+<InvocationDisclosure id="sec-O" open className="inv-section rounded border border-border p-2">
+      <summary className="cursor-pointer text-sm font-semibold">Aprovação, auditoria e compartilhamento</summary>
       <div className="mt-3 space-y-2">
         <p className="text-xs">Estado atual: {initial?.aprovacaoMestre === 'aprovada' ? 'Aprovada' : initial?.aprovacaoMestre === 'rejeitada' ? 'Rejeitada' : initial ? 'Pendente' : 'Nova ficha aguardará aprovação'} · Versão {initial?.versaoModelo ?? 1}{initial?.versaoAprovada ? ' · Aprovada até a versão ' + initial.versaoAprovada : ''}</p>
-        {initial?.motivoRejeicao && <p className="text-xs text-destructive">Motivo da rejeição: {initial.motivoRejeicao}</p>}
+        {initial?.motivoRejeicao && <p className="text-xs inv-error">Motivo da rejeição: {initial.motivoRejeicao}</p>}
         <p className="text-xs">Compartilhamento: a ficha acompanha o personagem e segue as permissões e a sincronização atuais da mesa.</p>
-        {alertas.length > 0 && <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2"><p className="text-xs font-semibold">Avisos de regra — não bloqueiam o envio</p><ul className="mt-1 space-y-1 text-xs text-amber-700">{alertas.map((notice,index) => <li key={notice.codigo + index}>{notice.detalhe}</li>)}</ul></div>}
-        {[...Object.values(derivados).filter(item => item.modo === 'revisao_necessaria'), ...Object.values(extrasDerivados).filter(item => item.modo === 'revisao_necessaria')].length > 0 && <p className="text-xs text-amber-700">Há campos derivados pendentes de revisão. Os valores foram preservados e não serão recalculados sem uma escolha explícita.</p>}
+        {alertas.length > 0 && <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2"><p className="text-xs font-semibold">Avisos de regra — não bloqueiam o envio</p><ul className="mt-1 space-y-1 text-xs inv-warning">{alertas.map((notice,index) => <li key={notice.codigo + index}>{notice.detalhe}</li>)}</ul></div>}
+        {[...Object.values(derivados).filter(item => item.modo === 'revisao_necessaria'), ...Object.values(extrasDerivados).filter(item => item.modo === 'revisao_necessaria')].length > 0 && <p className="text-xs inv-warning">Há campos derivados pendentes de revisão. Os valores foram preservados e não serão recalculados sem uma escolha explícita.</p>}
       </div>
-    </details>
-
-    {erro && <p role="alert" className="text-xs text-destructive">{erro}</p>}
-    {mensagem && <p role="status" className="text-xs text-muted-foreground">{mensagem}</p>}
-    <div className="flex flex-wrap gap-2">
-      <button type="button" disabled={salvando || aguardandoMestre} onClick={() => void salvar()} className="rounded bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">{salvando ? 'Enviando…' : isEditing ? 'Salvar e solicitar nova aprovação' : 'Criar ficha e solicitar aprovação'}</button>
-      {onCancel && <button type="button" className="rounded border px-3 py-2 text-xs" onClick={onCancel}>Voltar à biblioteca</button>}
-    </div>
+    </InvocationDisclosure>
+</motion.section>
+    <div className="inv-step-footer"><button type="button" className="inv-secondary" disabled={activeStep === 0} onClick={() => mudarEtapa(activeStep - 1)}>Etapa anterior</button><span>{activeStep + 1} de {creationSteps.length}</span>{activeStep < creationSteps.length - 1 && <button type="button" className="inv-primary" onClick={() => mudarEtapa(activeStep + 1)}>Próxima etapa</button>}</div>
+    </div></div>
     {cropOpen && imagemAssetId && <TokenCropDialog entity={cropEntity} onCancel={() => setCropOpen(false)} onConfirm={(crop, circular) => { setTokenCrop(crop); setFormaToken(circular ? 'ELLIPSE' : 'RECT'); setCropOpen(false); }} />}
   </div>;
 }
