@@ -783,7 +783,7 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
   useEffect(() => {
     if (previousStepRef.current === activeStep) return;
     previousStepRef.current = activeStep;
-    editorRootRef.current?.querySelector<HTMLElement>('.inv-stage-panel:not([hidden]) .inv-stage-heading')?.focus({ preventScroll: true });
+    editorRootRef.current?.querySelector<HTMLElement>('.inv-stage-panel[data-active="true"] .inv-stage-heading')?.focus({ preventScroll: true });
   }, [activeStep]);
   return <div ref={editorRootRef} className="inv-editor-root space-y-3 rounded-lg border border-border p-3 text-sm">
     <div className="inv-editor-header">
@@ -809,8 +809,8 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
     <nav aria-label="Etapas da criação" className="inv-steps">
       {creationSteps.map((title, index) => <button key={title} type="button" data-step={index + 1} aria-controls={'inv-step-panel-' + index} aria-current={activeStep === index ? 'step' : undefined} onClick={() => mudarEtapa(index)}><span className="inv-step-number" aria-hidden="true">{index + 1}</span><span>{title}</span></button>)}
     </nav>
-    <div className="inv-stage-content">
-<motion.section initial={false} animate={activeStep === 0 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="1" id="inv-step-panel-0" hidden={activeStep !== 0} aria-labelledby="inv-step-heading-0">
+    <motion.div className="inv-stage-content" layout={reduceMotion ? false : "size"} transition={{ duration: reduceMotion ? 0 : 0.34, ease: [0.22, 1, 0.36, 1] }}>
+<motion.section initial={false} animate={activeStep === 0 ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: reduceMotion ? 0 : -7, scale: reduceMotion ? 1 : 0.994 }} transition={{ duration: reduceMotion ? 0.14 : 0.34, ease: [0.22, 1, 0.36, 1] }} className="inv-stage-panel" data-active={activeStep === 0} data-step="1" id="inv-step-panel-0" inert={activeStep !== 0} aria-hidden={activeStep !== 0} aria-labelledby="inv-step-heading-0">
       <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-0"><p className="inv-eyebrow">Etapa 1 de 5</p><h2>Identidade</h2><p>Dê nome à ficha e escolha o tipo e o grau. Arte e histórico podem ser ajustados aqui.</p></div>
 <InvocationDisclosure id="sec-A" open className="inv-section rounded border border-border p-2">
       <summary className="cursor-pointer text-sm font-semibold">Identidade, origem e aquisição</summary>
@@ -867,7 +867,7 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
       {(initial?.registroEvolucao?.length ?? 0) > 0 && <p className="mt-2 text-xs text-muted-foreground">Este modelo já tem {initial?.registroEvolucao?.length} registro(s) de evolução.</p>}
     </InvocationDisclosure>
 </motion.section>
-<motion.section initial={false} animate={activeStep === 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="2" id="inv-step-panel-1" hidden={activeStep !== 1} aria-labelledby="inv-step-heading-1">
+<motion.section initial={false} animate={activeStep === 1 ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: reduceMotion ? 0 : -7, scale: reduceMotion ? 1 : 0.994 }} transition={{ duration: reduceMotion ? 0.14 : 0.34, ease: [0.22, 1, 0.36, 1] }} className="inv-stage-panel" data-active={activeStep === 1} data-step="2" id="inv-step-panel-1" inert={activeStep !== 1} aria-hidden={activeStep !== 1} aria-labelledby="inv-step-heading-1">
       <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-1"><p className="inv-eyebrow">Etapa 2 de 5</p><h2>Atributos e valores</h2><p>Distribua os pontos e confira os valores. Cada campo continua com seu modo automático, manual ou pendente de revisão.</p></div>
 <InvocationDisclosure id="sec-D" open className="inv-section rounded border border-border p-2">
       <summary className="cursor-pointer text-sm font-semibold">Atributos, pontos e modificadores</summary>
@@ -911,7 +911,7 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
       </div>
     </InvocationDisclosure>
 </motion.section>
-<motion.section initial={false} animate={activeStep === 2 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="3" id="inv-step-panel-2" hidden={activeStep !== 2} aria-labelledby="inv-step-heading-2">
+<motion.section initial={false} animate={activeStep === 2 ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: reduceMotion ? 0 : -7, scale: reduceMotion ? 1 : 0.994 }} transition={{ duration: reduceMotion ? 0.14 : 0.34, ease: [0.22, 1, 0.36, 1] }} className="inv-stage-panel" data-active={activeStep === 2} data-step="3" id="inv-step-panel-2" inert={activeStep !== 2} aria-hidden={activeStep !== 2} aria-labelledby="inv-step-heading-2">
       <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-2"><p className="inv-eyebrow">Etapa 3 de 5</p><h2>Habilidades</h2><p>Organize ações, passivas e reações. Os controles e avisos de cada habilidade permanecem disponíveis.</p></div>
 <InvocationDisclosure id="sec-G" open className="inv-section rounded border border-border p-2">
       <summary className="cursor-pointer text-sm font-semibold">Catálogo de ações</summary>
@@ -1022,7 +1022,7 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
       })}</ul>
     </InvocationDisclosure>
 </motion.section>
-<motion.section initial={false} animate={activeStep === 3 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="4" id="inv-step-panel-3" hidden={activeStep !== 3} aria-labelledby="inv-step-heading-3">
+<motion.section initial={false} animate={activeStep === 3 ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: reduceMotion ? 0 : -7, scale: reduceMotion ? 1 : 0.994 }} transition={{ duration: reduceMotion ? 0.14 : 0.34, ease: [0.22, 1, 0.36, 1] }} className="inv-stage-panel" data-active={activeStep === 3} data-step="4" id="inv-step-panel-3" inert={activeStep !== 3} aria-hidden={activeStep !== 3} aria-labelledby="inv-step-heading-3">
       <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-3"><p className="inv-eyebrow">Etapa 4 de 5</p><h2>Invocação e recursos</h2><p>Defina como a ficha entra em campo, sua economia de ações e o tempo adicional.</p></div>
 <section className="inv-section inv-invocation-settings" aria-labelledby="invocation-settings-title">
   <div className="inv-stage-section-title"><h3 id="invocation-settings-title">Como esta ficha entra em campo</h3><p>Confira o intermediário, o alcance e os custos antes de solicitar a aprovação.</p></div>
@@ -1088,7 +1088,7 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
       <p className="mt-2 text-xs text-muted-foreground">Sem configuração, a invocação não recebe tempo extra. Turnos e rodadas equivalem a 6 s; o valor é concedido uma vez por instância.</p>
     </InvocationDisclosure>
 </motion.section>
-<motion.section initial={false} animate={activeStep === 4 ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }} className="inv-stage-panel" data-step="5" id="inv-step-panel-4" hidden={activeStep !== 4} aria-labelledby="inv-step-heading-4">
+<motion.section initial={false} animate={activeStep === 4 ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: reduceMotion ? 0 : -7, scale: reduceMotion ? 1 : 0.994 }} transition={{ duration: reduceMotion ? 0.14 : 0.34, ease: [0.22, 1, 0.36, 1] }} className="inv-stage-panel" data-active={activeStep === 4} data-step="5" id="inv-step-panel-4" inert={activeStep !== 4} aria-hidden={activeStep !== 4} aria-labelledby="inv-step-heading-4">
       <div className="inv-stage-heading" tabIndex={-1} id="inv-step-heading-4"><p className="inv-eyebrow">Etapa 5 de 5</p><h2>Avançado e revisão</h2><p>Ajuste OMNI e autonomia quando necessário. Revise os avisos e envie a versão ao Mestre.</p></div>
 <div className="inv-review-summary"><h3>Antes de enviar</h3><p>{camposEmRevisao} campo(s) com revisão necessária · {alertas.length} aviso(s) de regra.</p><p>A navegação entre etapas não salva a ficha. O botão de aprovação envia a versão completa ao Mestre.</p></div>
 <InvocationDisclosure id="sec-J" className="inv-section rounded border border-border p-2">
@@ -1160,7 +1160,7 @@ export function CriadorShikigami({ character, initial, onSaved, onCancel }: Prop
     </InvocationDisclosure>
 </motion.section>
     <div className="inv-step-footer"><button type="button" className="inv-secondary" disabled={activeStep === 0} onClick={() => mudarEtapa(activeStep - 1)}>Etapa anterior</button><span>{activeStep + 1} de {creationSteps.length}</span>{activeStep < creationSteps.length - 1 && <button type="button" className="inv-primary" onClick={() => mudarEtapa(activeStep + 1)}>Próxima etapa</button>}</div>
-    </div></div>
+    </motion.div></div>
     {cropOpen && imagemAssetId && <TokenCropDialog entity={cropEntity} onCancel={() => setCropOpen(false)} onConfirm={(crop, circular) => { setTokenCrop(crop); setFormaToken(circular ? 'ELLIPSE' : 'RECT'); setCropOpen(false); }} />}
   </div>;
 }
