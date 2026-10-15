@@ -44,16 +44,17 @@ describe("módulo independente de Invocações", () => {
     expect(screen.queryByLabelText("Personagem controlador")).toBeNull();
   });
 
-  it("permite ao Mestre escolher o controlador", () => {
+  it("mantém o seletor visível e a ponte nativa sincronizados para o Mestre", () => {
     useCharacterStore.setState({
       characters: [jogador("controlador-1", "perfil-1"), jogador("controlador-2", "perfil-2")],
     });
     useRoleStore.setState({ role: "MASTER" });
 
-    render(<InvocacoesModule />);
-    fireEvent.change(screen.getByLabelText("Personagem controlador"), {
-      target: { value: "controlador-2" },
-    });
+    const { container } = render(<InvocacoesModule />);
+    expect(screen.getByRole("combobox", { name: "Personagem controlador" }).tagName).toBe("BUTTON");
+    const nativeSelect = container.querySelector<HTMLSelectElement>("select.inv-select-native");
+    if (!nativeSelect) throw new Error("A ponte nativa do seletor não foi renderizada");
+    fireEvent.change(nativeSelect, { target: { value: "controlador-2" } });
 
     expect(screen.getByTestId("controlador-invocacoes").textContent).toBe("controlador-2");
   });

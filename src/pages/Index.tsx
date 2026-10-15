@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { lazyWithReload } from "@/lib/lazyWithReload";
 import { Header, getTabsForRole } from "@/components/Header";
 import { AuthScreen } from "@/components/AuthScreen";
@@ -80,6 +80,7 @@ export default function Index() {
   const [zoomIndex, setZoomIndex] = useState(4);
   const panelCollapsed = useLogStore((s) => s.panelCollapsed);
   const setPanelCollapsed = useLogStore((s) => s.setPanelCollapsed);
+  const invocationLogPreference = useRef<{ wasCollapsed: boolean; collapsedForInvocations: boolean } | null>(null);
   const isMobile = useIsMobile();
   const zoomScale = ZOOM_SCALES[zoomIndex] / 100;
   const immersive = useMapStore((s) => s.immersive);
@@ -91,6 +92,27 @@ export default function Index() {
       setPanelCollapsed(true);
     }
   }, [isMobile]);
+
+  useEffect(() => {
+    if (activeTab === "invocacoes") {
+      if (!invocationLogPreference.current) {
+        const shouldCollapse = !panelCollapsed;
+        invocationLogPreference.current = { wasCollapsed: panelCollapsed, collapsedForInvocations: shouldCollapse };
+        if (shouldCollapse) setPanelCollapsed(true);
+      } else if (invocationLogPreference.current.collapsedForInvocations && !panelCollapsed) {
+        // An explicit user expansion while Invocations is open becomes the saved preference.
+        invocationLogPreference.current = { wasCollapsed: false, collapsedForInvocations: false };
+      }
+      return;
+    }
+
+    const preference = invocationLogPreference.current;
+    if (!preference) return;
+    invocationLogPreference.current = null;
+    if (preference.collapsedForInvocations && panelCollapsed) {
+      setPanelCollapsed(isMobile ? true : preference.wasCollapsed);
+    }
+  }, [activeTab, isMobile, panelCollapsed, setPanelCollapsed]);
 
   // If player role and current tab is restricted, redirect to fichas.
   useEffect(() => {
