@@ -9,7 +9,7 @@ import { limiteAtivasPersonagem, type InvocacaoControlador } from './tipos';
 import { useLogStore } from '@/stores/useLogStore';
 import { useTestRequestStore } from '@/stores/useTestRequestStore';
 import { podeUsarVersaoAprovada } from '@/lib/controlador/aprovacao';
-import { transformarCaoEmTotalidade } from '@/lib/controlador/dezSombras';
+import { dadosAdicionaisInvestidaPerfurante, medirInvestidaRetaEmMetros, transformarCaoEmTotalidade } from '@/lib/controlador/dezSombras';
 import { computeTotalDefense } from '@/lib/defenseCalc';
 import { rollD20Autonomo, rollDiceGroups } from '@/lib/dice';
 import { SISTEMA_PERICIAS, ROTULOS_PERICIAS } from '@/lib/omni/constantesDoSistema';
@@ -19,6 +19,7 @@ import { buildSegments as buildFogSegments } from '@/lib/fog/visibility';
 import { useFogStore } from '@/stores/fogStore';
 import { isFreeformFor } from '@/lib/freeformMode';
 import { DEFAULT_SAVING_THROWS, type ActiveBuff, type Character, type DamageType } from '@/types';
+import { getTrainingBonusByLevel } from '@/lib/levelEngine';
 import type { MapTemplate } from '@/components/mapa/TemplateEngine';
 import { findEntitiesInTemplate, resolveAreaTargetCharacters } from '@/lib/mapAoE';
 import { resolverTokenDaFicha } from '@/lib/mapa/tokenDaFicha';
@@ -119,6 +120,54 @@ function gravarInstancia(
 }
 
 /** Registra a decisão exclusiva do Mestre e preserva a instância derrotada no histórico. */
+/** Ends Sapo holds when its source instance is no longer active. */
+function liberarAgarrõesDoSapo(donoSapoId: string, instanciaSapoId: string): void {
+  const grapplerId = 'invocacao-sapo:' + instanciaSapoId;
+  let alvosLiberados = 0;
+  const personagens = [...useCharacterStore.getState().characters];
+
+  for (const snapshot of personagens) {
+    const alvo = useCharacterStore.getState().characters.find(character => character.id === snapshot.id);
+    if (!alvo) continue;
+    const condicoes = alvo.activeConditions ?? [];
+    const condicoesRestantes = condicoes.filter(condition =>
+      condition.sourceEntityId !== 'dez-sombras:sapo' ||
+      condition.sourceCharId !== donoSapoId ||
+      condition.sourceInstanceId !== instanciaSapoId,
+    );
+    const grappledBy = alvo.grappleState?.grappledBy ?? [];
+    const grappledByRestante = grappledBy.filter(id => id !== grapplerId);
+    if (condicoesRestantes.length === condicoes.length && grappledByRestante.length === grappledBy.length) continue;
+    useCharacterStore.getState().updateCharacter(alvo.id, {
+      activeConditions: condicoesRestantes,
+      grappleState: { ...alvo.grappleState, grappledBy: grappledByRestante },
+    });
+    alvosLiberados++;
+  }
+
+  for (const donoSnapshot of personagens) {
+    for (const instanciaSnapshot of donoSnapshot.instanciasInvocacao ?? []) {
+      if (!(instanciaSnapshot.agarradoPorInvocacao ?? []).some(link =>
+        link.donoId === donoSapoId && link.instanciaId === instanciaSapoId)) continue;
+      const donoAtual = useCharacterStore.getState().characters.find(character => character.id === donoSnapshot.id);
+      const instanciaAtual = donoAtual?.instanciasInvocacao?.find(item => item.id === instanciaSnapshot.id);
+      if (!donoAtual || !instanciaAtual) continue;
+      const atualizada = InstanciaInvocacaoSchema.parse({
+        ...instanciaAtual,
+        version: instanciaAtual.version + 1,
+        agarradoPorInvocacao: (instanciaAtual.agarradoPorInvocacao ?? []).filter(link =>
+          link.donoId !== donoSapoId || link.instanciaId !== instanciaSapoId),
+      });
+      gravarInstancia(donoAtual, atualizada);
+      alvosLiberados++;
+    }
+  }
+
+  if (alvosLiberados > 0) {
+    useLogStore.getState().addLog('combat', 'O Sapo saiu de campo; os alvos agarrados foram liberados.');
+  }
+}
+
 export function resolverDerrotaPendenteInvocacao(
   donoId: string,
   invocacaoId: string,
@@ -227,6 +276,9 @@ export function resolverDerrotaPendenteInvocacao(
     invocacoesConhecidas: modelosAtualizados,
     instanciasInvocacao: instanciasAtualizadas,
   });
+  if (modelo.subcategoria === 'dez-sombras:sapo' && resultado.instancia.estado !== 'ativa') {
+    liberarAgarrõesDoSapo(donoId, instancia.id);
+  }
   return { ok: true };
 }
 
@@ -1068,6 +1120,7 @@ export function recolherInvocacao(donoId: string, invocacaoId: string): boolean 
     causasSaida: Array.from(new Set([...(instanciaAtual.causasSaida ?? []), 'dissipacao_voluntaria'])),
   });
   gravarInstancia(donoAtual ?? dono, dissipada);
+  if (modelo.subcategoria === 'dez-sombras:sapo') liberarAgarrõesDoSapo(donoId, instancia.id);
   mapa.removeEntities(tokens.map(t => t.id));
   if (tempo.removedSeconds > 0 || tempo.discardedSeconds > 0) {
     const detalheRelogio = tempo.appliedToCurrentClock
@@ -1103,6 +1156,7 @@ export function limparInvocacoesDerrotadas(donoId: string): number {
       });
       const derrotada = preservarContribuicaoNaDerrota(derrotadaBase);
       gravarInstancia(personagem, derrotada);
+      if (modelo.subcategoria === 'dez-sombras:sapo') liberarAgarrõesDoSapo(donoId, instancia.id);
       useMapStore.getState().removeEntities([token.id]);
       if (derrotada.contribuicaoTempo?.estado === 'consolacao' && derrotada.contribuicaoTempo.quantidadeRestante > 0) {
         useLogStore.getState().addLog('combat', `⏱️ ${modelo.apelido?.trim() || modelo.nome} foi derrotado; ${formatarSegundosTempoInvocacao(derrotada.contribuicaoTempo.quantidadeRestante)} s restantes preservados.`, 'A contribuição temporal foi mantida no relógio do dono até o fim do combate.');
@@ -1119,6 +1173,9 @@ export function limparInvocacoesDerrotadas(donoId: string): number {
       });
       gravarInstancia(personagem, caida);
       useMapStore.getState().updateEntity(token.id, { hp: hpAtual, invocationState: 'caida' });
+    }
+    if (modelo.subcategoria === 'dez-sombras:sapo' && estado === 'caida') {
+      liberarAgarrõesDoSapo(donoId, instancia.id);
     }
   }
   return removidos;
@@ -1139,6 +1196,7 @@ export function podeMoverInvocacao(donoId: string, tokenId: string): boolean {
   if (!modelo || !Number.isFinite(modelo.deslocamentoM) || modelo.deslocamentoM <= 0) return false;
   const instancia = obterInstanciaDoToken(dono, token, modelo);
   if (instancia.estado !== 'ativa') return false;
+  if ((instancia.agarradoPorInvocacao?.length ?? 0) > 0) return false;
   const combat = useCombatStore.getState();
   if (!combat.inCombat) return true;
   if (!podeComandarInvocacao(donoId)) return false;
@@ -1192,6 +1250,9 @@ export function confirmarMovimentoInvocacao(input: {
   if ((token.hp ?? instanciaAtiva.hpAtual) <= 0 || (token.invocationState && token.invocationState !== 'ativa') || instanciaAtiva.estado !== 'ativa') {
     return { ok: false, motivo: 'Invocação caída ou inativa não pode se mover.' };
   }
+  if ((instanciaAtiva.agarradoPorInvocacao?.length ?? 0) > 0) {
+    return { ok: false, motivo: 'Invocação agarrada não pode se mover antes de escapar.' };
+  }
   const grid = mapa.gridConfig;
   if (!(grid.dpi > 0) || !(grid.metersPerCell > 0)) return { ok: false, motivo: 'Grade do mapa inválida.' };
   const pontos = [input.de, ...input.trajetoria, input.para];
@@ -1237,6 +1298,18 @@ export function confirmarMovimentoInvocacao(input: {
     const gasto = gastarAcaoDaInstancia(instancia, 'acaoMovimento', 1, input.requestId);
     if (!gasto.ok) return gasto;
     instancia = gasto.instancia;
+    if (modelo.subcategoria === 'dez-sombras:touro-perfurante') {
+      instancia = InstanciaInvocacaoSchema.parse({
+        ...instancia,
+        version: instancia.version + 1,
+        investidaPerfuranteTurno: {
+          rodada: combat.round ?? 1,
+          turnoIndex: combat.currentTurnIndex,
+          combateId: combat.combatId ?? undefined,
+          distanciaM: medirInvestidaRetaEmMetros(pontos, grid),
+        },
+      });
+    }
     gravarInstancia(dono, instancia);
   }
   return { ok: true, distanciaM };
@@ -1308,6 +1381,9 @@ export function causarDanoInvocacao(
     ? preservarContribuicaoNaDerrota(comTemporarios)
     : comTemporarios;
   gravarInstancia(dono, instanciaAtualizada);
+  if (modelo.subcategoria === 'dez-sombras:sapo' && instanciaAtualizada.estado !== 'ativa') {
+    liberarAgarrõesDoSapo(dono.id, instanciaAtualizada.id);
+  }
   if (instanciaAtualizada.estado === 'derrotada') {
     mapa.removeEntities([tokenId]);
     const restante = instanciaAtualizada.contribuicaoTempo?.estado === 'consolacao'
@@ -1616,6 +1692,254 @@ export async function comandarAtaque(
   return executarAtaqueInvocacao(donoId, invocacaoId, acaoId, alvoId, opcoes, 'manual');
 }
 
+function normalizarNomePericia(valor: string): string {
+  return valor.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function bonusPericiaPersonagem(personagem: Character, pericia: string): number {
+  const nome = normalizarNomePericia(pericia);
+  const habilidade = (personagem.skills ?? []).find(item => normalizarNomePericia(item.name ?? '') === nome);
+  if (!habilidade) return 0;
+  const atributo = (personagem.attributes ?? []).find(item => item.name === habilidade.linkedAttribute);
+  const modificador = atributo ? Math.floor((atributo.value - 10) / 2) : 0;
+  const treinamento = habilidade.trained ? getTrainingBonusByLevel(personagem.level ?? 1) : 0;
+  return modificador + treinamento + (habilidade.externalBonus ?? 0);
+}
+
+function turnoAtualDoPersonagem(personagemId: string): boolean {
+  const combate = useCombatStore.getState();
+  return !combate.inCombat || combate.initiativeOrder[combate.currentTurnIndex]?.charId === personagemId;
+}
+
+export async function comandarSegurarSapo(
+  donoId: string,
+  invocacaoId: string,
+  alvoId: string,
+  opcoes?: { instanciaId?: string; requestId?: string },
+): Promise<{ ok: true; sucesso: boolean; aplicouCondicao: boolean; totalSapo: number; totalAlvo: number; nomeAlvo: string } | { ok: false; motivo: string }> {
+  const dono = useCharacterStore.getState().characters.find(character => character.id === donoId);
+  const modelo = dono?.invocacoesConhecidas?.find(item => item.id === invocacaoId && item.donoCharacterId === donoId);
+  if (!dono || !modelo || modelo.subcategoria !== 'dez-sombras:sapo') {
+    return { ok: false, motivo: 'Segurar só pode ser comandado por uma instância do Sapo.' };
+  }
+  if (useCombatStore.getState().inCombat && !podeComandarInvocacao(donoId)) {
+    return { ok: false, motivo: 'Segurar só pode ser comandado no turno do dono.' };
+  }
+  const acao = modelo.acoes.find(item => item.id === 'segurar');
+  if (!acao) return { ok: false, motivo: 'A ação Segurar não está configurada na ficha do Sapo.' };
+  const mapa = useMapStore.getState();
+  const servo = tokensInvocados(donoId).find(token => token.invocationId === invocacaoId &&
+    (!opcoes?.instanciaId || token.invocationInstanceId === opcoes.instanciaId) &&
+    (token.hp ?? 0) > 0 && (!token.invocationState || token.invocationState === 'ativa'));
+  if (!servo?.invocationInstanceId) return { ok: false, motivo: 'Sapo ativo não encontrado no mapa.' };
+  const instancia = obterInstanciaDoToken(dono, servo, modelo);
+  if (instancia.estado !== 'ativa') return { ok: false, motivo: 'Sapo caído ou inativo não pode manter Agarrado.' };
+
+  let tokenAlvo: Entity | undefined;
+  let personagemAlvo: Character | undefined;
+  let donoInvocacaoAlvo: Character | undefined;
+  let modeloInvocacaoAlvo: InvocacaoControlador | undefined;
+  let instanciaAlvo: InstanciaInvocacao | undefined;
+  if (alvoId.startsWith('invoc:')) {
+    tokenAlvo = mapa.entities[alvoId.slice('invoc:'.length)];
+    if (!tokenAlvo?.ownerCharId || !tokenAlvo.invocationId || tokenAlvo.hidden ||
+      mapa.layerVisible[tokenAlvo.layer ?? 'tokens'] === false || tokenAlvo.id === servo.id || (tokenAlvo.hp ?? 0) <= 0) {
+      return { ok: false, motivo: 'Shikigami-alvo ativo não encontrado.' };
+    }
+    donoInvocacaoAlvo = useCharacterStore.getState().characters.find(character => character.id === tokenAlvo!.ownerCharId);
+    modeloInvocacaoAlvo = donoInvocacaoAlvo?.invocacoesConhecidas?.find(item => item.id === tokenAlvo!.invocationId);
+    if (!donoInvocacaoAlvo || !modeloInvocacaoAlvo) return { ok: false, motivo: 'Ficha do Shikigami-alvo não encontrada.' };
+    instanciaAlvo = obterInstanciaDoToken(donoInvocacaoAlvo, tokenAlvo, modeloInvocacaoAlvo);
+    if (instanciaAlvo.estado !== 'ativa' || (tokenAlvo.invocationState && tokenAlvo.invocationState !== 'ativa')) {
+      return { ok: false, motivo: 'Shikigami caído ou inativo não pode ser agarrado.' };
+    }
+    if ((instanciaAlvo.agarradoPorInvocacao?.length ?? 0) > 0) return { ok: false, motivo: 'Este Shikigami já está agarrado.' };
+  } else {
+    personagemAlvo = useCharacterStore.getState().characters.find(character => character.id === alvoId);
+    if (!personagemAlvo || personagemAlvo.id === donoId || (personagemAlvo.hpCurrent ?? 1) <= 0) {
+      return { ok: false, motivo: 'Personagem-alvo ativo não encontrado.' };
+    }
+    tokenAlvo = resolverTokenDaFicha(personagemAlvo, mapa.entities, mapa.layerVisible);
+    if (!tokenAlvo) return { ok: false, motivo: 'O alvo precisa estar visível no mapa.' };
+    if ((personagemAlvo.activeConditions ?? []).some(condition => condition.conditionId === 'agarrado')) {
+      return { ok: false, motivo: 'Este personagem já está Agarrado.' };
+    }
+  }
+
+  const escala = mapa.gridConfig.metersPerCell / mapa.gridConfig.dpi;
+  if (!(escala > 0)) return { ok: false, motivo: 'Grade do mapa inválida.' };
+  const distancia = Math.hypot(
+    (servo.x + servo.w / 2) - (tokenAlvo.x + tokenAlvo.w / 2),
+    (servo.y + servo.h / 2) - (tokenAlvo.y + tokenAlvo.h / 2),
+  ) * escala;
+  if (distancia > (acao.alcanceM ?? 9) + 1e-6) return { ok: false, motivo: 'O alvo está além dos 9 m da língua do Sapo.' };
+
+  const bonusSapo = calcularBonusPericiaInvocacao(dono, modelo, 'LUTA')?.total ?? 0;
+  const bonusAlvo = personagemAlvo
+    ? bonusPericiaPersonagem(personagemAlvo, 'Atletismo')
+    : calcularBonusPericiaInvocacao(donoInvocacaoAlvo!, modeloInvocacaoAlvo!, 'ATLETISMO')?.total ?? 0;
+  const debito = prepararDebitoComando(dono, modelo, instancia, acao, undefined, 'manual');
+  if (!debito.ok) return debito;
+  const categoria = categoriaEconomiaDaAcao(acao, instancia.economiaAcoes);
+  if (!categoria) return { ok: false, motivo: 'Categoria da ação Segurar não configurada.' };
+  const gasto = gastarAcaoDaInstancia(instancia, categoria, 1, opcoes?.requestId ?? novoIdInvocacao('segurar'));
+  if (!gasto.ok) return gasto;
+  const instanciaGasta = registrarRecargaDaAcao({
+    ...gasto.instancia,
+    recursosAtuais: debito.recursosRestantes,
+  }, acao);
+  gravarInstancia(dono, instanciaGasta, { peCurrent: debito.peDonoRestante });
+
+  const d20Sapo = await rollD20Autonomo(bonusSapo, { label: 'Luta do Sapo: Segurar' });
+  const d20Alvo = await rollD20Autonomo(bonusAlvo, { label: 'Atletismo: resistir a Segurar' });
+  const totalSapo = d20Sapo + bonusSapo;
+  const totalAlvo = d20Alvo + bonusAlvo;
+  const sucesso = totalSapo >= totalAlvo;
+  let aplicouCondicao = false;
+  if (sucesso) {
+    const conditionId = novoIdInvocacao('sapo-agarrado');
+    if (personagemAlvo) {
+      const idAplicado = useCharacterStore.getState().addCondition(personagemAlvo.id, {
+        id: conditionId,
+        conditionId: 'agarrado',
+        name: 'Agarrado',
+        icon: '🤼',
+        remainingTurns: -1,
+        remainingRounds: -1,
+        sourceCharId: donoId,
+        sourceCharName: modelo.nome,
+        sourceEntityId: 'dez-sombras:sapo',
+        sourceInstanceId: instancia.id,
+      });
+      aplicouCondicao = Boolean(idAplicado);
+      if (aplicouCondicao) {
+        const grapplerId = 'invocacao-sapo:' + instancia.id;
+        const atual = useCharacterStore.getState().characters.find(character => character.id === personagemAlvo!.id);
+        const grappledBy = atual?.grappleState?.grappledBy ?? [];
+        useCharacterStore.getState().updateCharacter(personagemAlvo.id, {
+          grappleState: { ...atual?.grappleState, grappledBy: Array.from(new Set([...grappledBy, grapplerId])) },
+        });
+      }
+    } else if (donoInvocacaoAlvo && modeloInvocacaoAlvo && instanciaAlvo) {
+      const atualizada = InstanciaInvocacaoSchema.parse({
+        ...instanciaAlvo,
+        version: instanciaAlvo.version + 1,
+        agarradoPorInvocacao: [{
+          donoId,
+          instanciaId: instancia.id,
+          modeloId: modelo.id,
+          nome: modelo.nome,
+        }],
+      });
+      gravarInstancia(donoInvocacaoAlvo, atualizada);
+      aplicouCondicao = true;
+    }
+  }
+  useLogStore.getState().addLog('combat',
+    modelo.nome + ' usa Segurar contra ' + (personagemAlvo?.name ?? modeloInvocacaoAlvo?.apelido ?? modeloInvocacaoAlvo?.nome) +
+    ': Luta ' + d20Sapo + ' + ' + bonusSapo + ' = ' + totalSapo + ' vs Atletismo ' +
+    d20Alvo + ' + ' + bonusAlvo + ' = ' + totalAlvo + (sucesso ? (aplicouCondicao ? ' — Agarrado.' : ' — condição bloqueada.') : ' — falhou.'));
+  return { ok: true, sucesso, aplicouCondicao, totalSapo, totalAlvo, nomeAlvo: personagemAlvo?.name ?? modeloInvocacaoAlvo?.apelido ?? modeloInvocacaoAlvo?.nome ?? 'alvo' };
+}
+
+export type PericiaFugaSapo = 'Atletismo' | 'Acrobacia';
+type ResultadoFugaSapo =
+  | { ok: true; escapou: boolean; totalAlvo: number; totalSapo: number; pericia: PericiaFugaSapo }
+  | { ok: false; motivo: string };
+
+async function rolarFugaSapo(
+  donoAlvo: Character,
+  modeloAlvo?: InvocacaoControlador,
+  pericia: PericiaFugaSapo = 'Atletismo',
+  sapoDonoId?: string,
+  sapoModelo?: InvocacaoControlador,
+  sapoInstanciaId?: string,
+): Promise<ResultadoFugaSapo> {
+  const sapoDono = useCharacterStore.getState().characters.find(character => character.id === sapoDonoId);
+  const instanciaSapo = sapoDono?.instanciasInvocacao?.find(instancia => instancia.id === sapoInstanciaId);
+  const tokenSapoAtivo = Boolean(sapoDono && sapoModelo && sapoInstanciaId &&
+    Object.values(useMapStore.getState().entities).some(token =>
+      token.ownerCharId === sapoDonoId && token.invocationId === sapoModelo.id &&
+      token.invocationInstanceId === sapoInstanciaId && (token.hp ?? 0) > 0 &&
+      (!token.invocationState || token.invocationState === 'ativa'),
+    ));
+  if (!sapoDono || !sapoModelo || sapoModelo.subcategoria !== 'dez-sombras:sapo' ||
+    !instanciaSapo || instanciaSapo.estado !== 'ativa' || !tokenSapoAtivo) {
+    return { ok: false, motivo: 'A ficha do Sapo que mantém o agarrão não foi encontrada.' };
+  }
+  if (!turnoAtualDoPersonagem(donoAlvo.id)) return { ok: false, motivo: 'A fuga só pode ser tentada no início do turno do alvo.' };
+  const bonusAlvo = modeloAlvo
+    ? calcularBonusPericiaInvocacao(donoAlvo, modeloAlvo, pericia.toUpperCase())?.total ?? 0
+    : bonusPericiaPersonagem(donoAlvo, pericia);
+  const bonusSapo = calcularBonusPericiaInvocacao(sapoDono, sapoModelo, 'ATLETISMO')?.total ?? 0;
+  const d20Alvo = await rollD20Autonomo(bonusAlvo, { label: pericia + ': escapar do Sapo' });
+  const d20Sapo = await rollD20Autonomo(bonusSapo, { label: 'Atletismo do Sapo: manter Agarrado' });
+  const totalAlvo = d20Alvo + bonusAlvo;
+  const totalSapo = d20Sapo + bonusSapo;
+  return { ok: true, escapou: totalAlvo > totalSapo, totalAlvo, totalSapo, pericia };
+}
+
+export async function escaparAgarradoPorInvocacao(
+  donoAlvoId: string,
+  conditionId: string,
+  pericia: PericiaFugaSapo,
+): Promise<ResultadoFugaSapo> {
+  const alvo = useCharacterStore.getState().characters.find(character => character.id === donoAlvoId);
+  const condicao = alvo?.activeConditions?.find(condition => condition.id === conditionId &&
+    condition.conditionId === 'agarrado' && condition.sourceEntityId === 'dez-sombras:sapo');
+  if (!alvo || !condicao?.sourceCharId || !condicao.sourceInstanceId) {
+    return { ok: false, motivo: 'Agarrão do Sapo não encontrado nesta ficha.' };
+  }
+  const donoSapo = useCharacterStore.getState().characters.find(character => character.id === condicao.sourceCharId);
+  const modeloSapo = donoSapo?.invocacoesConhecidas?.find(modelo => modelo.id ===
+    donoSapo.instanciasInvocacao?.find(instancia => instancia.id === condicao.sourceInstanceId)?.modeloId);
+  if (!donoSapo || !modeloSapo) return { ok: false, motivo: 'O Sapo que mantém o agarrão não foi encontrado.' };
+  const resultado = await rolarFugaSapo(alvo, undefined, pericia, donoSapo.id, modeloSapo, condicao.sourceInstanceId);
+  if (resultado.ok && resultado.escapou) {
+    useCharacterStore.getState().removeCondition(donoAlvoId, conditionId);
+    const grapplerId = 'invocacao-sapo:' + condicao.sourceInstanceId;
+    const grappledBy = (alvo.grappleState?.grappledBy ?? []).filter(id => id !== grapplerId);
+    useCharacterStore.getState().updateCharacter(donoAlvoId, {
+      grappleState: { ...alvo.grappleState, grappledBy },
+    });
+  }
+  if (resultado.ok) useLogStore.getState().addLog('combat',
+    alvo.name + ' tenta escapar do Sapo com ' + pericia + ': ' + resultado.totalAlvo +
+    ' vs Atletismo ' + resultado.totalSapo + (resultado.escapou ? ' — escapou.' : ' — permanece Agarrado.'));
+  return resultado;
+}
+
+export async function escaparInvocacaoAgarrada(
+  donoAlvoId: string,
+  instanciaAlvoId: string,
+  pericia: PericiaFugaSapo,
+): Promise<ResultadoFugaSapo> {
+  const donoAlvo = useCharacterStore.getState().characters.find(character => character.id === donoAlvoId);
+  const instanciaAlvo = donoAlvo?.instanciasInvocacao?.find(instancia => instancia.id === instanciaAlvoId);
+  const modeloAlvo = donoAlvo?.invocacoesConhecidas?.find(modelo => modelo.id === instanciaAlvo?.modeloId);
+  const vinculo = instanciaAlvo?.agarradoPorInvocacao?.[0];
+  const donoSapo = vinculo && useCharacterStore.getState().characters.find(character => character.id === vinculo.donoId);
+  const modeloSapo = donoSapo?.invocacoesConhecidas?.find(modelo => modelo.id === vinculo?.modeloId);
+  if (!donoAlvo || !instanciaAlvo || !modeloAlvo || !vinculo) {
+    return { ok: false, motivo: 'Agarrão do Sapo não encontrado nesta instância.' };
+  }
+  if (!donoSapo || !modeloSapo) return { ok: false, motivo: 'O Sapo que mantém o agarrão não foi encontrado.' };
+  const resultado = await rolarFugaSapo(donoAlvo, modeloAlvo, pericia, donoSapo.id, modeloSapo, vinculo.instanciaId);
+  if (resultado.ok && resultado.escapou && donoAlvo && instanciaAlvo) {
+    const atualizada = InstanciaInvocacaoSchema.parse({
+      ...instanciaAlvo,
+      version: instanciaAlvo.version + 1,
+      agarradoPorInvocacao: (instanciaAlvo.agarradoPorInvocacao ?? []).filter(link =>
+        link.donoId !== vinculo.donoId || link.instanciaId !== vinculo.instanciaId),
+    });
+    gravarInstancia(donoAlvo, atualizada);
+  }
+  if (resultado.ok) useLogStore.getState().addLog('combat',
+    modeloAlvo.nome + ' tenta escapar do Sapo com ' + pericia + ': ' + resultado.totalAlvo +
+    ' vs Atletismo ' + resultado.totalSapo + (resultado.escapou ? ' — escapou.' : ' — permanece Agarrado.'));
+  return resultado;
+}
+
 /** Caminho interno usado pelo despachante de autonomia após validar gatilho e alvo. */
 export async function executarAtaqueAutonomoInvocacao(
   donoId: string,
@@ -1793,13 +2117,23 @@ async function executarAtaqueInvocacao(
     if (!donoAlvo || !modeloAlvo) return null;
     const instanciaAlvo = obterInstanciaDoToken(donoAlvo, token, modeloAlvo);
     if (instanciaAlvo.estado === 'derrotada' || instanciaAlvo.estado === 'dissipada') return null;
-    const defesa = Number.isFinite(token.invocationDefense)
+    const defesaBase = Number.isFinite(token.invocationDefense)
       ? token.invocationDefense!
       : modeloAlvo.defesa;
+    const defesa = Math.max(0, defesaBase - ((instanciaAlvo.agarradoPorInvocacao?.length ?? 0) > 0 ? 3 : 0));
     if (!Number.isFinite(defesa) || defesa < 0) return null;
-    const bonusResistencia = tipoTeste === 'resistencia'
+    const bonusResistenciaBase = tipoTeste === 'resistencia'
       ? calcularBonusResistenciaInvocacao(donoAlvo, modeloAlvo, acao.resistenciaAlvo!)
       : undefined;
+    const agarrado = (instanciaAlvo.agarradoPorInvocacao?.length ?? 0) > 0;
+    const penalidadeReflexos = agarrado && acao.resistenciaAlvo?.trim().toLocaleLowerCase('pt-BR') === 'reflexos' ? 3 : 0;
+    const bonusResistencia = bonusResistenciaBase && penalidadeReflexos > 0
+      ? {
+        ...bonusResistenciaBase,
+        total: bonusResistenciaBase.total - penalidadeReflexos,
+        breakdown: bonusResistenciaBase.breakdown + ' · Agarrado -' + penalidadeReflexos + ' Reflexos',
+      }
+      : bonusResistenciaBase;
     if (tipoTeste === 'resistencia' && !bonusResistencia) return null;
     return {
       alvoId: `invoc:${token.id}`,
@@ -1848,7 +2182,24 @@ async function executarAtaqueInvocacao(
     : !aceitaAlvoAtivo(dono, alvo.dono, resolucaoOmni.config))) {
     return { ok: false, motivo: 'Uma invocação atingida não atende ao filtro OMNI.' };
   }
-  const formula = acao.dano ? parseFormulaDanoInvocacao(acao.dano) : null;
+  const estadoTurnoAtaque = useCombatStore.getState();
+  const rodadaAtaque = estadoTurnoAtaque.round ?? 1;
+  const movimentoInvestida = instancia.investidaPerfuranteTurno;
+  const bonusDadosInvestida = modelo.subcategoria === 'dez-sombras:touro-perfurante' &&
+    acaoId === 'investida-perfurante' && movimentoInvestida?.rodada === rodadaAtaque &&
+    movimentoInvestida.turnoIndex === estadoTurnoAtaque.currentTurnIndex &&
+    Boolean(movimentoInvestida.combateId) &&
+    movimentoInvestida.combateId === estadoTurnoAtaque.combatId
+    ? dadosAdicionaisInvestidaPerfurante(movimentoInvestida.distanciaM)
+    : 0;
+  let formulaBase = acao.dano ? parseFormulaDanoInvocacao(acao.dano) : null;
+  if (formulaBase && bonusDadosInvestida > 0) {
+    const dados = [...formulaBase.dados, { count: bonusDadosInvestida, sides: 10 }];
+    const formulaDano = dados.map(dado => String(dado.count) + 'd' + String(dado.sides)).join('+');
+    acao = { ...acao, dano: formulaDano + (formulaBase.fixo ? '+' + formulaBase.fixo : '') };
+    formulaBase = { ...formulaBase, dados };
+  }
+  const formula = formulaBase;
   if (tipoTeste === 'ataque' && !formula) return { ok: false, motivo: 'Dano inválido; use dados como 2d12+1d6+3.' };
   if (tipoTeste === 'resistencia' && acao.dano && !formula) return { ok: false, motivo: 'Dano inválido; use dados como 2d12+1d6+3.' };
   const bonusAtaqueBase = tipoTeste === 'ataque' ? calcularBonusAtaqueInvocacao(dono, modelo, acao) : null;
@@ -1865,7 +2216,11 @@ async function executarAtaqueInvocacao(
   if (tipoTeste === 'resistencia' && cd === null) return { ok: false, motivo: 'Defina o atributo usado para calcular a CD da ação.' };
   const gasto = gastarAcaoDaInstancia(instancia, categoria, 1, opcoes?.requestId);
   if (!gasto.ok) return gasto;
-  const comRecursosDebitados = { ...gasto.instancia, recursosAtuais: debito.recursosRestantes };
+  const comRecursosDebitados = { ...gasto.instancia, recursosAtuais: debito.recursosRestantes,
+    ...(modelo.subcategoria === 'dez-sombras:touro-perfurante' && acaoId === 'investida-perfurante'
+      ? { investidaPerfuranteTurno: undefined }
+      : {}),
+  };
   const comRecarga = registrarRecargaDaAcao(comRecursosDebitados, acao);
   gravarInstancia(dono, comRecarga, { peCurrent: debito.peDonoRestante });
   ataquesPendentes.add(chave);
@@ -1978,6 +2333,7 @@ async function executarAtaqueInvocacao(
         nome: alvo.personagem.name,
         defesa: alvo.defesa,
         personagem: alvo.personagem,
+      token: alvo.token,
       })),
       ...alvosInvocacaoValidados.map(alvo => ({
         tipo: 'invocacao' as const,
@@ -1990,10 +2346,30 @@ async function executarAtaqueInvocacao(
     ];
     for (const alvo of alvosParaAtaque) {
       const { defesa } = alvo;
-      const natural = await rollD20Autonomo(bonusAtaque!.total, { label: `Ataque de ${modelo.nome}: ${acao.nome}` });
-      const resultado = resolverAcertoInvocacao(natural, bonusAtaque!.total, defesa, acao.margemCritico ?? 20);
+      const eMordidaDeCao = acaoId === 'mordida' &&
+        ['dez-sombras:cao-branco', 'dez-sombras:cao-preto', 'dez-sombras:totalidade'].includes(modelo.subcategoria ?? '');
+      const temShikigamiAoLadoDoAlvo = eMordidaDeCao && Object.values(mapa.entities).some(outro => {
+        if (outro.id === servo.id || outro.id === alvo.token.id ||
+          !outro.invocationId || !outro.invocationInstanceId || (outro.hp ?? 0) <= 0) return false;
+        const distancia = Math.hypot(
+          (outro.x + outro.w / 2) - (alvo.token.x + alvo.token.w / 2),
+          (outro.y + outro.h / 2) - (alvo.token.y + alvo.token.h / 2),
+        ) * escala;
+        return distancia <= 1.5 + 1e-6;
+      });
+      const bonusAlcateia = temShikigamiAoLadoDoAlvo
+        ? modelo.subcategoria === 'dez-sombras:totalidade' ? 4 : 2
+        : 0;
+      const bonusAtaqueAlvo = bonusAtaque!.total + bonusAlcateia;
+      const d20Inicial = await rollD20Autonomo(bonusAtaqueAlvo, { label: 'Ataque de ' + modelo.nome + ': ' + acao.nome });
+      const atacanteAgarrado = (instancia.agarradoPorInvocacao?.length ?? 0) > 0;
+      const d20Alternativo = atacanteAgarrado
+        ? await rollD20Autonomo(bonusAtaqueAlvo, { label: 'Desvantagem por Agarrado: ' + modelo.nome })
+        : undefined;
+      const natural = d20Alternativo === undefined ? d20Inicial : Math.min(d20Inicial, d20Alternativo);
+      const resultado = resolverAcertoInvocacao(natural, bonusAtaqueAlvo, defesa, acao.margemCritico ?? 20);
       if (!resultado.acertou) {
-        useLogStore.getState().addLog('combat', `🎯 ${modelo.nome} — ${acao.nome} contra ${alvo.nome}: d20 ${natural} + ${bonusAtaque!.total} = ${resultado.total} vs Defesa ${defesa} (${resultado.falhaCritica ? 'falha crítica' : 'erro'}).`);
+        useLogStore.getState().addLog('combat', `🎯 ${modelo.nome} — ${acao.nome} contra ${alvo.nome}: d20 ${natural} + ${bonusAtaqueAlvo} = ${resultado.total} vs Defesa ${defesa} (${resultado.falhaCritica ? 'falha crítica' : 'erro'}).`);
         resultados.push({ alvoId: alvo.alvoId, nomeAlvo: alvo.nome, acertou: false, totalAtaque: resultado.total, dano: 0 });
         continue;
       }
@@ -2024,7 +2400,7 @@ async function executarAtaqueInvocacao(
           ...(opcoes?.cadeia ? { cadeia: opcoes.cadeia } : {}),
         });
       }
-      useLogStore.getState().addLog('combat', `🎯 ${modelo.nome} — ${acao.nome} contra ${alvo.nome}: d20 ${natural} + ${bonusAtaque!.total} = ${resultado.total} vs Defesa ${defesa} → ${resultado.critico ? 'acerto crítico' : 'acerto'}, dano ${dano} (${acao.tipoDano ?? 'DCO'})${detalhesDanoAuxilio.length ? `; auxílio extra ${detalhesDanoAuxilio.join(', ')}` : ''}.`);
+      useLogStore.getState().addLog('combat', `🎯 ${modelo.nome} — ${acao.nome} contra ${alvo.nome}: d20 ${natural} + ${bonusAtaqueAlvo} = ${resultado.total} vs Defesa ${defesa} → ${resultado.critico ? 'acerto crítico' : 'acerto'}, dano ${dano} (${acao.tipoDano ?? 'DCO'})${detalhesDanoAuxilio.length ? `; auxílio extra ${detalhesDanoAuxilio.join(', ')}` : ''}.`);
       resultados.push({ alvoId: alvo.alvoId, nomeAlvo: alvo.nome, acertou: true, totalAtaque: resultado.total, dano, ...(resultado.critico ? { critico: true } : {}) });
     }
     consumirAuxiliosDeAtaque();

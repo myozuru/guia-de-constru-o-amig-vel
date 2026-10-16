@@ -429,6 +429,13 @@ export const InstanciaInvocacaoSchema = z.object({
   pvTemporarios: nonNegativeNumberSchema.optional(),
   /** Composição congelada da Horda; hpAtual/hpMaximoAtual são o único pool de PV. */
   composicaoHorda: ComposicaoHordaInvocacaoSchema.optional(),
+  /** Vínculos de agarrão aplicados por shikigami a esta instância. */
+  agarradoPorInvocacao: z.array(z.object({
+    donoId: idSchema,
+    instanciaId: idSchema,
+    modeloId: idSchema,
+    nome: z.string().trim().min(1).max(120),
+  }).strict()).max(20).optional(),
   efeitosSuporteAtivos: z.array(EfeitoSuporteAtivoInvocacaoSchema).max(100).optional(),
   condicoes: z.array(z.unknown()).optional(),
   economiaAcoes: EconomiaInstanciaSchema.optional(),
@@ -447,6 +454,13 @@ export const InstanciaInvocacaoSchema = z.object({
   }).strict().optional(),
   /** O dono ou o Mestre pode interromper a autonomia desta instância em campo. */
   automacaoSuspensa: z.boolean().optional(),
+  /** Percurso retilíneo feito neste turno, consumido pela Investida Perfurante. */
+  investidaPerfuranteTurno: z.object({
+    rodada: nonNegativeIntSchema,
+    turnoIndex: nonNegativeIntSchema,
+    combateId: idSchema.optional(),
+    distanciaM: nonNegativeNumberSchema.max(1000),
+  }).strict().optional(),
   /** Orçamento de automações da rodada; reentrada não restaura ações já executadas. */
   usosAutomacaoRodada: z.object({
     rodada: nonNegativeIntSchema,

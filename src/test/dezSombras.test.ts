@@ -9,9 +9,9 @@ import { useLogStore } from '@/stores/useLogStore';
 import { useMapStore } from '@/stores/useMapStore';
 import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
 import { useTestRequestStore } from '@/stores/useTestRequestStore';
-import { criarPacoteDezSombras, DEZ_SOMBRAS_MODELOS } from '@/lib/controlador/dezSombras';
-import { calcularBonusAtaqueInvocacao } from '@/lib/controlador/rolagens';
-import { invocarControladores, comandarAtaque, comandarSuporte, causarDanoInvocacao } from '@/lib/controlador/mapa';
+import { criarPacoteDezSombras, dadosAdicionaisInvestidaPerfurante, DEZ_SOMBRAS_MODELOS, medirInvestidaRetaEmMetros, transformarCaoEmTotalidade } from '@/lib/controlador/dezSombras';
+import { calcularBonusAtaqueInvocacao, calcularBonusPericiaInvocacao, calcularBonusResistenciaInvocacao } from '@/lib/controlador/rolagens';
+import { invocarControladores, confirmarMovimentoInvocacao, comandarAtaque, comandarSegurarSapo, escaparAgarradoPorInvocacao, escaparInvocacaoAgarrada, podeMoverInvocacao, comandarSuporte, causarDanoInvocacao, resolverDerrotaPendenteInvocacao, recolherInvocacao, rolarPericiaInvocacao } from '@/lib/controlador/mapa';
 import { resolverDanoAposTRInvocacao } from '@/lib/controlador/resolucaoTR';
 
 const ID_DONO = 'dono';
@@ -25,7 +25,7 @@ function prepararMesa() {
   useLogStore.getState().clearLogs();
   useTestRequestStore.getState().clearAll();
   useOmniEntidadesStore.setState({ entidades: {} });
-  useCombatStore.setState({ inCombat: false, round: 1, currentTurnIndex: 0, initiativeOrder: [] } as never);
+  useCombatStore.setState({ inCombat: false, combatId: 'combate-dez-sombras', round: 1, currentTurnIndex: 0, initiativeOrder: [] } as never);
 
   const modelos = criarPacoteDezSombras(ID_DONO, true).map(modelo => ({
     ...modelo,
@@ -111,6 +111,30 @@ describe('Dez Sombras: catalogo importado', () => {
     expect(useMapStore.getState().entities[resultado.ok ? resultado.tokenIds[0] : '']).toMatchObject({ ownerCharId: ID_DONO });
   });
 
+  it('aplica Robustez aos PV máximos de Elefante Máximo e Mahoraga', () => {
+    expect(modelo('elefante-maximo')).toMatchObject({ hpAtual: 90, hpMaximo: 90 });
+    expect(modelo('mahoraga')).toMatchObject({ hpAtual: 240, hpMaximo: 240 });
+  });
+
+  it('aplica Flexível como +2 em Acrobacia nos testes reais da Grande Serpente', async () => {
+    const serpente = modelo('grande-serpente');
+    await invocarUma('grande-serpente');
+    rolarD20(12);
+
+    await expect(rolarPericiaInvocacao(ID_DONO, serpente.id, 'ACROBACIA'))
+      .resolves.toMatchObject({ ok: true, d20: 12, bonus: 0, total: 12, treinada: false });
+  });
+
+  it('conta apenas uma trajetória reta contínua para os dados de Investida', () => {
+    const escala = { dpi: 70, metersPerCell: 1.5 };
+    expect(medirInvestidaRetaEmMetros([{ x: 0, y: 0 }, { x: 0, y: 140 }], escala)).toBe(3);
+    expect(medirInvestidaRetaEmMetros([{ x: 0, y: 0 }, { x: 50, y: 50 }, { x: 100, y: 0 }], escala)).toBe(0);
+    expect(medirInvestidaRetaEmMetros([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 50, y: 0 }], escala)).toBe(0);
+    expect(dadosAdicionaisInvestidaPerfurante(2.99)).toBe(0);
+    expect(dadosAdicionaisInvestidaPerfurante(3)).toBe(1);
+    expect(dadosAdicionaisInvestidaPerfurante(6)).toBe(2);
+  });
+
   it('mantem sem nome a decima entidade nao identificada e nao promove formas derivadas a individuos-base', () => {
     const catalogo = criarPacoteDezSombras(ID_DONO, true);
     expect(catalogo.some(item => item.subcategoria === 'dez-sombras:decimo-shikigami')).toBe(false);
@@ -152,7 +176,7 @@ const ATAQUES_ESPERADOS: AtaqueEsperado[] = [
   { modeloId: 'grande-serpente', acaoId: 'mordida', formula: '2d8+3', tipoDano: 'DP', alcanceM: 3, bonusAtaque: 3, bonusEfetivo: 5, status: 'executavel', teste: 'ataque' },
   { modeloId: 'elefante-maximo', acaoId: 'golpe-tromba', formula: '2d12+4', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 6, status: 'executavel', teste: 'ataque' },
   { modeloId: 'elefante-maximo', acaoId: 'torrente-agua', formula: '2d10+4', tipoDano: 'DI', alcanceM: 12, bonusAtaque: undefined, bonusEfetivo: undefined, status: 'parcial', teste: 'resistencia' },
-  { modeloId: 'touro-perfurante', acaoId: 'investida-perfurante', formula: '2d10+7', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 2, bonusEfetivo: 9, status: 'parcial', teste: 'ataque' },
+  { modeloId: 'touro-perfurante', acaoId: 'investida-perfurante', formula: '2d10+7', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
   { modeloId: 'mahoraga', acaoId: 'golpe-punho', formula: '4d12+7', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
   { modeloId: 'mahoraga', acaoId: 'espada-energia-reversa', formula: '4d12+7', tipoDano: 'DNR', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
   { modeloId: 'mahoraga', acaoId: 'espada-forca', formula: '4d12+7', tipoDano: 'DE', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
@@ -223,6 +247,257 @@ describe('Dez Sombras: ataques automatizados em combate', () => {
       expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(1000 - esperado);
     });
   }
+
+  it('adiciona o d10 da distância reta antes da Investida do Touro e consome a marca', async () => {
+    const tokenId = await invocarUma('touro-perfurante', 210, 350);
+    const token = useMapStore.getState().entities[tokenId];
+    const alvo = Object.values(useMapStore.getState().entities).find(entity => entity.characterId === ID_INIMIGO)!;
+    const tokensAliados = Object.values(useMapStore.getState().entities)
+      .filter(entity => !entity.invocationId && entity.characterId !== ID_INIMIGO)
+      .map(entity => entity.id);
+    useMapStore.getState().removeEntities(tokensAliados);
+
+    const de = { x: token.x, y: token.y };
+    const para = { x: 210, y: 140 };
+    useMapStore.getState().updateEntity(tokenId, para);
+    useMapStore.getState().setPendingMove({
+      entityId: tokenId, charId: ID_DONO, invocationInstanceId: token.invocationInstanceId!,
+      movementRequestId: 'investida-touro-move', startX: de.x, startY: de.y,
+      trail: [de, para], distM: 4.5,
+    });
+    expect(confirmarMovimentoInvocacao({
+      tokenId, instanciaId: token.invocationInstanceId!, de, para,
+      trajetoria: [de, para], distanciaM: 4.5, requestId: 'investida-touro-move',
+    })).toMatchObject({ ok: true, distanciaM: 4.5 });
+    expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === token.invocationInstanceId)?.investidaPerfuranteTurno)
+      .toMatchObject({ rodada: 1, turnoIndex: 0, combateId: 'combate-dez-sombras', distanciaM: 4.5 });
+
+    rolarD20();
+    const dados = rolarDadosMinimos();
+    await expect(comandarAtaque(ID_DONO, modelo('touro-perfurante').id, 'investida-perfurante', ID_INIMIGO))
+      .resolves.toMatchObject({ ok: true, acertou: true, dano: 10 });
+    expect(dados.mock.calls.flatMap(([notation]) => [...notation.matchAll(/(\d+)d\d+/g)].map(match => Number(match[1]))).reduce((sum, count) => sum + count, 0)).toBe(3);
+    expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(990);
+    expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === token.invocationInstanceId)?.investidaPerfuranteTurno).toBeUndefined();
+  });
+
+  it('aplica o bônus de Alcateia ao Cão atacante quando outro shikigami está junto do alvo', async () => {
+    const lote = invocarControladores(ID_DONO, [
+      { invocacaoId: modelo('cao-branco').id, x: 210, y: 140 },
+      { invocacaoId: modelo('cao-preto').id, x: 350, y: 140 },
+    ]);
+    if (!lote.ok) throw new Error(lote.motivo);
+    rolarD20(12);
+    rolarDadosMinimos();
+
+    await expect(comandarAtaque(ID_DONO, modelo('cao-branco').id, 'mordida', ID_INIMIGO, {
+      instanciaId: useMapStore.getState().entities[lote.tokenIds[0]].invocationInstanceId,
+    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: 19, dano: 5 });
+  });
+
+  it('applies Totality\'s +4 Pack bonus to its own bite when another shikigami is beside the target', async () => {
+    const totalidade = transformarCaoEmTotalidade(modelo('cao-preto'));
+    if (!totalidade) throw new Error('Could not create Totality profile.');
+    useCharacterStore.getState().updateCharacter(ID_DONO, {
+      invocacoesConhecidas: pegarFicha(ID_DONO).invocacoesConhecidas?.map(item =>
+        item.id === totalidade.id ? totalidade : item,
+      ),
+    });
+    const lote = invocarControladores(ID_DONO, [
+      { invocacaoId: totalidade.id, x: 210, y: 140 },
+      { invocacaoId: modelo('nue').id, x: 350, y: 140 },
+    ]);
+    if (!lote.ok) throw new Error(lote.motivo);
+    const modeloAtual = pegarFicha(ID_DONO).invocacoesConhecidas!.find(item => item.id === totalidade.id)!;
+    const mordida = modeloAtual.acoes.find(acao => acao.id === 'mordida')!;
+    const bonusBase = calcularBonusAtaqueInvocacao(pegarFicha(ID_DONO), modeloAtual, mordida)!.total;
+    rolarD20(12);
+    rolarDadosMinimos();
+
+    await expect(comandarAtaque(ID_DONO, totalidade.id, 'mordida', ID_INIMIGO, {
+      instanciaId: useMapStore.getState().entities[lote.tokenIds[0]].invocationInstanceId,
+    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: bonusBase + 12 + 4, dano: 9 });
+  });
+
+  it('Segurar do Sapo aplica Agarrado no combate e permite fuga no turno do alvo', async () => {
+    const sapoOriginal = modelo('sapo');
+    const sapo = { ...sapoOriginal, periciasTreinadas: ['Atletismo'] };
+    useCharacterStore.getState().updateCharacter(ID_DONO, {
+      invocacoesConhecidas: pegarFicha(ID_DONO).invocacoesConhecidas?.map(item => item.id === sapo.id ? sapo : item),
+    });
+    const tokenId = await invocarUma('sapo');
+    const instanciaId = useMapStore.getState().entities[tokenId].invocationInstanceId!;
+    const rolagens = [20, 1, 20, 1];
+    vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockImplementation(async tipos => {
+      const valor = rolagens.shift() ?? 1;
+      return tipos.map(() => valor);
+    });
+
+    await expect(comandarSegurarSapo(ID_DONO, sapo.id, ID_INIMIGO, { instanciaId }))
+      .resolves.toMatchObject({ ok: true, sucesso: true, aplicouCondicao: true });
+    const condicao = pegarFicha(ID_INIMIGO).activeConditions?.find(item => item.conditionId === 'agarrado');
+    expect(condicao).toMatchObject({ sourceEntityId: 'dez-sombras:sapo', sourceInstanceId: instanciaId });
+    expect(pegarFicha(ID_INIMIGO).grappleState?.grappledBy).toContain('invocacao-sapo:' + instanciaId);
+
+    useCombatStore.setState({
+      initiativeOrder: [{ charId: ID_INIMIGO, charName: 'Inimigo', roll: 1, bonus: 0, total: 1 }],
+      currentTurnIndex: 0,
+    } as never);
+    const bonusAtletismoSapo = calcularBonusPericiaInvocacao(pegarFicha(ID_DONO), sapo, 'ATLETISMO')!.total;
+    const bonusLutaSapo = calcularBonusPericiaInvocacao(pegarFicha(ID_DONO), sapo, 'LUTA')!.total;
+    expect(bonusAtletismoSapo).toBeGreaterThan(bonusLutaSapo);
+    await expect(escaparAgarradoPorInvocacao(ID_INIMIGO, condicao!.id, 'Atletismo'))
+      .resolves.toMatchObject({ ok: true, escapou: true, totalSapo: 1 + bonusAtletismoSapo });
+    expect(pegarFicha(ID_INIMIGO).activeConditions?.some(item => item.conditionId === 'agarrado')).toBe(false);
+    expect(pegarFicha(ID_INIMIGO).grappleState?.grappledBy).not.toContain('invocacao-sapo:' + instanciaId);
+  });
+
+  it('releases a character immediately when its Sapo is recalled and rejects stale escape attempts', async () => {
+    const sapo = modelo('sapo');
+    await invocarUma('sapo');
+    const instanciaId = pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.modeloId === sapo.id)?.id;
+    if (!instanciaId) throw new Error('Missing active Sapo instance.');
+    const rolagens = [20, 1];
+    vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockImplementation(async tipos => {
+      const valor = rolagens.shift() ?? 1;
+      return tipos.map(() => valor);
+    });
+    await expect(comandarSegurarSapo(ID_DONO, sapo.id, ID_INIMIGO, { instanciaId }))
+      .resolves.toMatchObject({ ok: true, aplicouCondicao: true });
+    const condicao = pegarFicha(ID_INIMIGO).activeConditions?.find(item => item.conditionId === 'agarrado');
+    expect(condicao).toBeDefined();
+
+    useCombatStore.setState({
+      round: 2,
+      initiativeOrder: [{ charId: ID_DONO, charName: 'Dono', roll: 10, bonus: 0, total: 10 }],
+      currentTurnIndex: 0,
+    } as never);
+    expect(recolherInvocacao(ID_DONO, sapo.id)).toBe(true);
+    expect(pegarFicha(ID_INIMIGO).activeConditions?.some(item => item.conditionId === 'agarrado')).toBe(false);
+    expect(pegarFicha(ID_INIMIGO).grappleState?.grappledBy).not.toContain('invocacao-sapo:' + instanciaId);
+    await expect(escaparAgarradoPorInvocacao(ID_INIMIGO, condicao!.id, 'Atletismo'))
+      .resolves.toMatchObject({ ok: false });
+  });
+
+  it('Segurar também marca outro Shikigami e bloqueia seu movimento até a fuga', async () => {
+    const lote = invocarControladores(ID_DONO, [
+      { invocacaoId: modelo('sapo').id, x: 210, y: 140 },
+      { invocacaoId: modelo('nue').id, x: 350, y: 140 },
+    ]);
+    if (!lote.ok) throw new Error(lote.motivo);
+    const sapoToken = useMapStore.getState().entities[lote.tokenIds[0]];
+    const nueToken = useMapStore.getState().entities[lote.tokenIds[1]];
+    const rolagens = [20, 1, 20, 1];
+    const rolagem = vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockImplementation(async tipos => {
+      const valor = rolagens.shift() ?? 1;
+      return tipos.map(() => valor);
+    });
+
+    await expect(comandarSegurarSapo(ID_DONO, modelo('sapo').id, 'invoc:' + nueToken.id, {
+      instanciaId: sapoToken.invocationInstanceId,
+    })).resolves.toMatchObject({ ok: true, sucesso: true, aplicouCondicao: true });
+    const alvoAtual = pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === nueToken.invocationInstanceId)!;
+    expect(alvoAtual.agarradoPorInvocacao).toHaveLength(1);
+    expect(podeMoverInvocacao(ID_DONO, nueToken.id)).toBe(false);
+
+    const nue = modelo('nue');
+    const rasante = nue.acoes.find(acao => acao.id === 'rasante-eletrico')!;
+    const bonusNue = calcularBonusAtaqueInvocacao(pegarFicha(ID_DONO), nue, rasante)!.total;
+    rolagem.mockImplementationOnce(async tipos => tipos.map(() => 20))
+      .mockImplementationOnce(async tipos => tipos.map(() => 5));
+    rolarDadosMinimos();
+    await expect(comandarAtaque(ID_DONO, nue.id, 'rasante-eletrico', ID_INIMIGO, {
+      instanciaId: nueToken.invocationInstanceId,
+    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: bonusNue + 5 });
+
+    await expect(escaparInvocacaoAgarrada(ID_DONO, alvoAtual.id, 'Atletismo'))
+      .resolves.toMatchObject({ ok: true, escapou: true });
+    expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === alvoAtual.id)?.agarradoPorInvocacao).toEqual([]);
+  });
+
+  it('releases a captured Shikigami when the Sapo is reduced to 0 HP', async () => {
+    const lote = invocarControladores(ID_DONO, [
+      { invocacaoId: modelo('sapo').id, x: 210, y: 140 },
+      { invocacaoId: modelo('nue').id, x: 350, y: 140 },
+    ]);
+    if (!lote.ok) throw new Error(lote.motivo);
+    const sapoToken = useMapStore.getState().entities[lote.tokenIds[0]];
+    const nueToken = useMapStore.getState().entities[lote.tokenIds[1]];
+    const rolagens = [20, 1];
+    vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockImplementation(async tipos => {
+      const valor = rolagens.shift() ?? 1;
+      return tipos.map(() => valor);
+    });
+    await expect(comandarSegurarSapo(ID_DONO, modelo('sapo').id, 'invoc:' + nueToken.id, {
+      instanciaId: sapoToken.invocationInstanceId,
+    })).resolves.toMatchObject({ ok: true, aplicouCondicao: true });
+    const nueInstanciaId = nueToken.invocationInstanceId!;
+    expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === nueInstanciaId)?.agarradoPorInvocacao).toHaveLength(1);
+
+    expect(causarDanoInvocacao(sapoToken.id, sapoToken.hpMax ?? 25)).toMatchObject({ ok: true, hpRestante: 0 });
+    expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === nueInstanciaId)?.agarradoPorInvocacao).toEqual([]);
+    expect(podeMoverInvocacao(ID_DONO, nueToken.id)).toBe(true);
+  });
+
+  it('não reaproveita o movimento de Investida após iniciar outro combate', async () => {
+    const tokenId = await invocarUma('touro-perfurante', 210, 350);
+    const token = useMapStore.getState().entities[tokenId];
+    const tokensAliados = Object.values(useMapStore.getState().entities)
+      .filter(entity => !entity.invocationId && entity.characterId !== ID_INIMIGO)
+      .map(entity => entity.id);
+    useMapStore.getState().removeEntities(tokensAliados);
+    const de = { x: token.x, y: token.y };
+    const para = { x: token.x, y: token.y - 210 };
+    useMapStore.getState().updateEntity(tokenId, para);
+    useMapStore.getState().setPendingMove({
+      entityId: tokenId, charId: ID_DONO, invocationInstanceId: token.invocationInstanceId!,
+      movementRequestId: 'investida-combate-anterior', startX: de.x, startY: de.y,
+      trail: [de, para], distM: 4.5,
+    });
+    expect(confirmarMovimentoInvocacao({
+      tokenId, instanciaId: token.invocationInstanceId!, de, para,
+      trajetoria: [de, para], distanciaM: 4.5, requestId: 'investida-combate-anterior',
+    })).toMatchObject({ ok: true });
+
+    useCombatStore.setState({ combatId: 'combate-seguinte', round: 1, currentTurnIndex: 0 } as never);
+    rolarD20();
+    const dados = rolarDadosMinimos();
+    await expect(comandarAtaque(ID_DONO, modelo('touro-perfurante').id, 'investida-perfurante', ID_INIMIGO))
+      .resolves.toMatchObject({ ok: true, acertou: true, dano: 9 });
+    expect(dados.mock.calls.flatMap(([notation]) => [...notation.matchAll(/(\d+)d\d+/g)].map(match => Number(match[1]))).reduce((sum, count) => sum + count, 0)).toBe(2);
+  });
+
+  it('só transforma o Cão sobrevivente em Totalidade após exorcismo permanente e mantém seus PV', async () => {
+    const resultado = invocarControladores(ID_DONO, [
+      { invocacaoId: modelo('cao-branco').id, x: 210, y: 140 },
+      { invocacaoId: modelo('cao-preto').id, x: 210, y: 210 },
+    ]);
+    if (!resultado.ok) throw new Error(resultado.motivo);
+    const caes = resultado.tokenIds.map(tokenId => useMapStore.getState().entities[tokenId]);
+    const sobrevivente = caes.find(token => token.invocationId === modelo('cao-branco').id)!;
+    const exorcizado = caes.find(token => token.invocationId === modelo('cao-preto').id)!;
+
+    expect(causarDanoInvocacao(sobrevivente.id, 5)).toMatchObject({ ok: true, hpRestante: 20, destruida: false });
+    expect(causarDanoInvocacao(exorcizado.id, 25)).toMatchObject({ ok: true, hpRestante: 0, destruida: false });
+    expect(pegarFicha(ID_DONO).invocacoesConhecidas?.find(item => item.id === sobrevivente.invocationId)?.subcategoria)
+      .toBe('dez-sombras:cao-branco');
+
+    expect(causarDanoInvocacao(exorcizado.id, 25)).toMatchObject({ ok: true, hpRestante: -25, destruida: true });
+    expect(resolverDerrotaPendenteInvocacao(ID_DONO, exorcizado.invocationId!, { resultado: 'perda_permanente' }, {
+      isMaster: true, profileId: 'perfil-mestre',
+    })).toEqual({ ok: true });
+
+    const totalidade = pegarFicha(ID_DONO).invocacoesConhecidas?.find(item => item.id === sobrevivente.invocationId)!;
+    expect(totalidade).toMatchObject({ subcategoria: 'dez-sombras:totalidade', hpAtual: 20, hpMaximo: 35, defesa: 22, deslocamentoM: 12 });
+    expect(useMapStore.getState().entities[sobrevivente.id]).toMatchObject({ hp: 20, hpMax: 35, invocationDefense: 22, invocationMovementM: 12 });
+    const d20 = rolarD20();
+    const dados = rolarDadosMinimos();
+    const ataque = await comandarAtaque(ID_DONO, totalidade.id, 'mordida', ID_INIMIGO);
+    expect(ataque).toMatchObject({ ok: true, acertou: true, dano: 9 });
+    expect(d20).toHaveBeenCalled();
+    expect(dados.mock.calls.map(([notation]) => notation)).toContain('3d8');
+    expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(991);
+  });
 
   it('mantem Arremessar manual e bloqueia execucao, rolagem e gasto de acao', async () => {
     const sapo = modelo('sapo');
@@ -296,7 +571,7 @@ describe('Dez Sombras: curas do Cervo e Mahoraga', () => {
 
     await expect(comandarSuporte(ID_DONO, mahoraga.id, 'regeneracao', [`invoc:${tokenId}`]))
       .resolves.toMatchObject({ ok: true, valor: 11, alvos: 1, curaReal: true, formula: '5d10+6' });
-    expect(useMapStore.getState().entities[tokenId].hp).toBe(111);
+    expect(useMapStore.getState().entities[tokenId].hp).toBe(151);
     expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes);
   });
 });
@@ -311,6 +586,46 @@ describe('Elephant Maximum: Water Stream in combat', () => {
     if (!request) throw new Error('Missing Fortitude request.');
     return { elefante, tokenId, request };
   }
+
+  it('applies the Agarrado -3 penalty to an invocation target\'s Reflexos save', async () => {
+    const elefanteBase = modelo('elefante-maximo');
+    const torrente = elefanteBase.acoes.find(acao => acao.id === 'torrente-agua')!;
+    const testeReflexos = {
+      ...torrente,
+      id: 'teste-reflexos-agarrado',
+      nome: 'Teste Reflexos Agarrado',
+      resistenciaAlvo: 'Reflexos',
+      statusAutomacao: 'executavel' as const,
+    };
+    const elefante = { ...elefanteBase, acoes: [...elefanteBase.acoes, testeReflexos] };
+    useCharacterStore.getState().updateCharacter(ID_DONO, {
+      invocacoesConhecidas: pegarFicha(ID_DONO).invocacoesConhecidas?.map(item => item.id === elefante.id ? elefante : item),
+    });
+    await invocarUma('elefante-maximo');
+
+    const caoFonte = modelo('cao-branco');
+    const modeloAlvo = { ...caoFonte, id: 'cao-alvo-reflexos', donoCharacterId: ID_INIMIGO, alcanceInvocacaoM: 18 };
+    useCharacterStore.getState().updateCharacter(ID_INIMIGO, {
+      specialization: 'Controlador', profileId: 'perfil-inimigo', level: 1, attributes: [], tecnicaAmaldicoada: 'Dez Sombras',
+      peCurrent: 80, peMax: 80, treinoControle: 1, invocacoesConhecidas: [modeloAlvo],
+    });
+    const loteAlvo = invocarControladores(ID_INIMIGO, [{ invocacaoId: modeloAlvo.id, x: 420, y: 140 }]);
+    if (!loteAlvo.ok) throw new Error(loteAlvo.motivo);
+    const tokenAlvo = useMapStore.getState().entities[loteAlvo.tokenIds[0]];
+    const instanciaAlvo = pegarFicha(ID_INIMIGO).instanciasInvocacao?.find(item => item.id === tokenAlvo.invocationInstanceId)!;
+    useCharacterStore.getState().updateCharacter(ID_INIMIGO, {
+      instanciasInvocacao: pegarFicha(ID_INIMIGO).instanciasInvocacao?.map(item => item.id === instanciaAlvo.id
+        ? { ...item, agarradoPorInvocacao: [{ donoId: ID_DONO, instanciaId: 'sapo-de-teste', modeloId: modelo('sapo').id, nome: 'Sapo' }] }
+        : item),
+    });
+
+    const resultado = await comandarAtaque(ID_DONO, elefante.id, testeReflexos.id, 'invoc:' + tokenAlvo.id);
+    if (!resultado.ok || !('requestId' in resultado)) throw new Error('The Reflexos test was not queued: ' + JSON.stringify(resultado));
+    const pedido = useTestRequestStore.getState().requests.find(item => item.id === resultado.requestId)!;
+    const bonusBase = calcularBonusResistenciaInvocacao(pegarFicha(ID_INIMIGO), modeloAlvo, 'Reflexos')!.total;
+    expect(pedido.bonusOverride).toBe(bonusBase - 3);
+    expect(pedido.bonusBreakdownOverride).toContain('Agarrado -3 Reflexos');
+  });
 
   it('aplica dano integral e empurra 4,5 m quando o TR falha', async () => {
     const { request } = await pedirTorrente();

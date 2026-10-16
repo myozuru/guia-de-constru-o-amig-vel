@@ -11,6 +11,7 @@ import { Character, Attribute, Passive, Spell, ActiveBuff, DAMAGE_TYPES, DAMAGE_
 import { SpellCreationAssistant } from './SpellCreationAssistant';
 import { OmniVinculadosList } from './OmniVinculadosList';
 import { podeUsarVersaoAprovada } from '@/lib/controlador/aprovacao';
+import { escaparAgarradoPorInvocacao, type PericiaFugaSapo } from '@/lib/controlador/mapa';
 import { BlindfoldSlot } from './BlindfoldSlot';
 import { useCharacterStore } from '@/stores/useCharacterStore';
 import { useRoleStore } from '@/stores/useRoleStore';
@@ -400,7 +401,7 @@ export function CharacterCard({ character: c, hideAttackPanel, compactHeader = f
   const movementActionUsed = useCombatStore((s) => !!s.movementActionUsedByChar?.[c.id]);
   const canManageThisCharacter = !isPlayer || (!!activeProfileId && c.profileId === activeProfileId);
   const unableToMove = (c.hpCurrent ?? 1) <= 0 || (c.activeConditions ?? []).some((condition) =>
-    ['atordoado', 'inconsciente', 'indefeso', 'imovel', 'morto', 'paralisado', 'desmaiado'].includes(condition.conditionId),
+    ['agarrado', 'atordoado', 'inconsciente', 'indefeso', 'imovel', 'morto', 'paralisado', 'desmaiado'].includes(condition.conditionId),
   );
   const canStandFromProne = canManageThisCharacter && !unableToMove && (!combatInProgress || (activeTurnCharId === c.id && !movementActionUsed));
   // Omni-Engine: rolagens deste personagem passam pelo contexto de reroll.
@@ -432,6 +433,7 @@ export function CharacterCard({ character: c, hideAttackPanel, compactHeader = f
   const [acaoChamativa, setAcaoChamativa] = useState(false);
 
   const [removing, setRemoving] = useState(false);
+  const [busyFugaAgarrado, setBusyFugaAgarrado] = useState(false);
   const [showRestModal, setShowRestModal] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [showDeathPrompt, setShowDeathPrompt] = useState(false);
@@ -485,6 +487,20 @@ export function CharacterCard({ character: c, hideAttackPanel, compactHeader = f
     addLog('combat', `${c.name} gastou uma ação de movimento para se levantar.`);
   };
 
+  const tentarFugaDoSapo = async (conditionId: string, pericia: PericiaFugaSapo) => {
+    if (busyFugaAgarrado) return;
+    setBusyFugaAgarrado(true);
+    try {
+      const resultado = await escaparAgarradoPorInvocacao(c.id, conditionId, pericia);
+      if (!resultado.ok) { toast.error(resultado.motivo); return; }
+      if (resultado.escapou) toast.success(c.name + ' escapou do Sapo com ' + pericia + '.');
+      else toast.info(c.name + ' continua Agarrado; ' + pericia + ' perdeu o teste.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível tentar escapar.');
+    } finally {
+      setBusyFugaAgarrado(false);
+    }
+  };
   const effects = c.origin ? applyOriginEffects(c.origin, c.level, {}) : null;
   // Especialista em Técnica usa fórmula própria de slots:
   //   Base = 3 no Nv 1 e +1 a CADA nível subsequente (não acumula em pares).
@@ -2181,7 +2197,13 @@ export function CharacterCard({ character: c, hideAttackPanel, compactHeader = f
             return (
               <span key={cd.id} className="rounded-full bg-hp/20 border border-hp/30 px-2 py-0.5 text-xs text-hp font-medium group cursor-pointer" title={`${cd.name}${cd.sourceCharName ? ` (por ${cd.sourceCharName})` : ''}`}>
                 {cd.icon} {cd.name} ({dur})
-                {cd.conditionId !== 'caido' && <button onClick={() => removeCondition(c.id, cd.id)} className="ml-1 text-destructive/60 hover:text-destructive hidden group-hover:inline">✕</button>}
+                {cd.conditionId === 'agarrado' && cd.sourceEntityId === 'dez-sombras:sapo' && cd.sourceInstanceId && (
+                  <span className="ml-2 inline-flex gap-1">
+                    <button type="button" disabled={busyFugaAgarrado || !canManageThisCharacter || (combatInProgress && activeTurnCharId !== c.id)} title="Tentar escapar no início do seu turno, sem gastar ação" onClick={() => void tentarFugaDoSapo(cd.id, 'Atletismo')} className="rounded border px-1 text-[10px] disabled:opacity-50">Escapar · Atletismo</button>
+                    <button type="button" disabled={busyFugaAgarrado || !canManageThisCharacter || (combatInProgress && activeTurnCharId !== c.id)} title="Tentar escapar no início do seu turno, sem gastar ação" onClick={() => void tentarFugaDoSapo(cd.id, 'Acrobacia')} className="rounded border px-1 text-[10px] disabled:opacity-50">Escapar · Acrobacia</button>
+                  </span>
+                )}
+                {cd.conditionId !== 'caido' && cd.sourceEntityId !== 'dez-sombras:sapo' && <button onClick={() => removeCondition(c.id, cd.id)} className="ml-1 text-destructive/60 hover:text-destructive hidden group-hover:inline">✕</button>}
               </span>
             );
           })}

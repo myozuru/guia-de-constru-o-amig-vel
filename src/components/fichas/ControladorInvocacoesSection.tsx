@@ -8,7 +8,7 @@ import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
 import { useMapStore } from '@/stores/useMapStore';
 import { useInventoryStore } from '@/stores/useInventoryStore';
 import { validarIntermediarioInvocacao } from '@/lib/controlador/intermediario';
-import { invocarControladores, invocarHordaControlador, recolherInvocacao, limparInvocacoesDerrotadas, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, rolarPericiaInvocacao, type DirecaoInvocacao } from '@/lib/controlador/mapa';
+import { invocarControladores, invocarHordaControlador, recolherInvocacao, limparInvocacoesDerrotadas, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, comandarSegurarSapo, escaparInvocacaoAgarrada, rolarPericiaInvocacao, type DirecaoInvocacao, type PericiaFugaSapo } from '@/lib/controlador/mapa';
 import { limiteInvocacoesConhecidas, limiteAtivasPersonagem, validarCatalogoControlador, type InvocacaoControlador, type TipoInvocacaoControlador } from '@/lib/controlador/tipos';
 import { podeUsarVersaoAprovada } from '@/lib/controlador/aprovacao';
 import { carregarAssetFicha } from '@/lib/controlador/assetFicha';
@@ -76,6 +76,8 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
   const [alvosAtaque, setAlvosAtaque] = useState<Record<string, string>>({});
   const [alvosAtaqueMultiplo, setAlvosAtaqueMultiplo] = useState<Record<string, string[]>>({});
   const [busyAtaque, setBusyAtaque] = useState(false);
+  const [busySegurar, setBusySegurar] = useState(false);
+  const [busyFugaInvocacao, setBusyFugaInvocacao] = useState(false);
   const [alvosSuporte, setAlvosSuporte] = useState<Record<string, string[]>>({});
   const [busySuporte, setBusySuporte] = useState(false);
   const [editando, setEditando] = useState<string | null>(null);
@@ -178,6 +180,31 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
             : `Ataque errou (resultado ${r.totalAtaque}).`);
       }
     } finally { setBusyAtaque(false); }
+  };
+  const segurar = async (invocacaoId: string) => {
+    const alvoId = alvosAtaque[invocacaoId];
+    if (!alvoId || busySegurar) return;
+    setBusySegurar(true); setErro(''); setMensagem('');
+    try {
+      const resultado = await comandarSegurarSapo(character.id, invocacaoId, alvoId);
+      if (!resultado.ok) { setErro(resultado.motivo); return; }
+      setMensagem(resultado.sucesso
+        ? resultado.aplicouCondicao ? resultado.nomeAlvo + ' ficou Agarrado.' : 'O alvo venceu a disputa, mas a condição foi bloqueada.'
+        : 'Segurar falhou: o alvo resistiu.');
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Não foi possível executar Segurar.');
+    } finally { setBusySegurar(false); }
+  };
+  const escaparInvocacao = async (instanciaId: string, pericia: PericiaFugaSapo) => {
+    if (busyFugaInvocacao) return;
+    setBusyFugaInvocacao(true); setErro(''); setMensagem('');
+    try {
+      const resultado = await escaparInvocacaoAgarrada(character.id, instanciaId, pericia);
+      if (!resultado.ok) { setErro(resultado.motivo); return; }
+      setMensagem(resultado.escapou ? 'O Shikigami escapou do agarrão.' : 'O Shikigami continua Agarrado.');
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Não foi possível tentar escapar.');
+    } finally { setBusyFugaInvocacao(false); }
   };
   const listarAlvosNoAlcance = (invocacaoId: string, alcanceM: number): string[] => {
     const mapa = useMapStore.getState();
@@ -723,13 +750,14 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
                     ? `Tempo por invocação: +${formatarSegundosTempoInvocacao(tempoConfigurado.segundos)} s`
                     : `Tempo extra inválido: ${tempoConfigurado.motivo}`;
         const derrotaPendente = estadoInstancia === 'derrotada' && !resolucaoDerrota;
+        const permiteAlvosInimigos = inv.acoes.some(acao => acao.permiteInimigos === true);
         const personagensAlvoSuporte = [...new Map(Object.values(entities)
           .filter(entity => entity.characterId && !entity.invocationId && !entity.hidden &&
-            (allCharacters.find(alvo => alvo.id === entity.characterId)?.category !== 'INIMIGO' || entity.characterId === character.id))
+            (permiteAlvosInimigos || allCharacters.find(alvo => alvo.id === entity.characterId)?.category !== 'INIMIGO' || entity.characterId === character.id))
           .map(entity => [entity.characterId!, { id: entity.characterId!, nome: entity.label || entity.characterId! }])).values()];
         const invocacoesAlvoSuporte = Object.values(entities)
           .filter(entity => entity.invocationId && entity.ownerCharId && !entity.hidden &&
-            (allCharacters.find(alvo => alvo.id === entity.ownerCharId)?.category !== 'INIMIGO' || entity.ownerCharId === character.id))
+            (permiteAlvosInimigos || allCharacters.find(alvo => alvo.id === entity.ownerCharId)?.category !== 'INIMIGO' || entity.ownerCharId === character.id))
           .flatMap(entity => {
             const donoAlvo = allCharacters.find(alvo => alvo.id === entity.ownerCharId);
             const modeloAlvo = donoAlvo?.invocacoesConhecidas?.find(modelo => modelo.id === entity.invocationId);
@@ -772,6 +800,11 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
           </div>
           <div className="inv-acquisition-status basis-full text-xs" data-status={inv.aprovacaoMestre}>Aquisição: {inv.aprovacaoMestre === 'pendente' ? 'Aguardando aprovação do Mestre' : inv.aprovacaoMestre === 'rejeitada' ? 'Rejeitada — edite e solicite novamente' : 'Aprovada'}</div>
           <div className={'basis-full text-xs ' + (derrotaPendente ? 'inv-error' : estadoInstancia === 'caida' ? 'inv-warning' : 'text-muted-foreground')}>Estado de combate: {rotuloEstado}{estadoInstancia === 'derrotada' && instancia ? ` (PV ${instancia.hpAtual})` : ''}</div>
+          {(instancia?.agarradoPorInvocacao?.length ?? 0) > 0 && <div className="basis-full flex flex-wrap items-center gap-2 rounded border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+            <span>Agarrado por {instancia?.agarradoPorInvocacao?.[0]?.nome}. Tente escapar no início do turno:</span>
+            <button type="button" disabled={busyFugaInvocacao} className="rounded border px-2 py-1 disabled:opacity-50" onClick={() => void escaparInvocacao(instancia!.id, 'Atletismo')}>Escapar · Atletismo</button>
+            <button type="button" disabled={busyFugaInvocacao} className="rounded border px-2 py-1 disabled:opacity-50" onClick={() => void escaparInvocacao(instancia!.id, 'Acrobacia')}>Escapar · Acrobacia</button>
+          </div>}
           {inv.pacoteRegras === 'dez-sombras' && inv.domado === false && <div className="basis-full space-y-1 text-xs">
             {inv.formaDerivada ? <>
               <p>Forma derivada bloqueada; não pode ser invocada até o Mestre confirmar manualmente os requisitos listados. O sistema não verifica os pré-requisitos automaticamente.</p>
@@ -903,8 +936,9 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
               <summary>Habilidades e traços {inv.acoes.filter(acao => acao.tipo === 'habilidade').length}</summary>
               <ul className="space-y-2 text-xs">
                 {inv.acoes.filter(acao => acao.tipo === 'habilidade').map(acao => <li key={acao.id}>
-                  <strong>{acao.nome} - Manual</strong>
+                  <strong>{acao.nome} - {acao.statusAutomacao === 'executavel' ? 'Automático' : acao.statusAutomacao === 'parcial' ? 'Parcial' : 'Manual'}</strong>
                   {acao.descricaoRegra && <p className="text-muted-foreground">{acao.descricaoRegra}</p>}
+                  {acao.id === 'segurar' && ativo && <button type="button" disabled={busySegurar || !alvosAtaque[inv.id] || emHorda} className="mt-1 rounded border px-2 py-1 disabled:opacity-50" onClick={() => void segurar(inv.id)}>Segurar alvo selecionado</button>}
                 </li>)}
               </ul>
             </InvocationDisclosure>

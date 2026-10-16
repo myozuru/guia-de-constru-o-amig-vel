@@ -22,6 +22,7 @@ export interface ModeloFonteDezSombras {
   grau: NonNullable<InvocacaoControlador['grau']>;
   custoPE: number;
   hp: number;
+  bonusPVMaximo?: number;
   defesa: number;
   deslocamentoM: number;
   atributos: NonNullable<InvocacaoControlador['atributos']>;
@@ -29,6 +30,7 @@ export interface ModeloFonteDezSombras {
   descricao: string;
   domadoInicialmente: boolean;
   opcionalHomebrew?: boolean;
+  caracteristicas?: Array<Record<string, unknown>>;
   acoes: AcaoFonte[];
 }
 
@@ -97,15 +99,15 @@ const perfis: ModeloFonteDezSombras[] = [
     id: 'cao-branco', nome: 'Cão Divino Branco', grau: 'quarto', custoPE: 2, hp: 25, defesa: 19, deslocamentoM: 10.5,
     atributos: { forca: 12, destreza: 16, constituicao: 10, inteligencia: 8, sabedoria: 6, presenca: 6 },
     pagina: 55, domadoInicialmente: true,
-    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: a ficha concede +2 no acerto quando outro shikigami está a até 1,5 m do alvo; o beneficiário do bônus não é especificado. Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
-    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), habilidade('alcateia', 'Alcateia', 'Se outro shikigami estiver a até 1,5 m do alvo, concede +2 no acerto. O beneficiário do bônus não está especificado; aplicação manual.')],
+    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: quando outro shikigami estiver a até 1,5 m do alvo, o Cão atacante recebe +2 no acerto (definição do usuário). Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
+    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), { ...habilidade('alcateia', 'Alcateia', 'Quando outro Shikigami estiver a até 1,5 m do alvo, concede +2 ao ataque do Cão. O bônus é verificado automaticamente ao usar Mordida.'), statusAutomacao: 'executavel' }],
   },
   {
     id: 'cao-preto', nome: 'Cão Divino Preto', grau: 'quarto', custoPE: 2, hp: 25, defesa: 19, deslocamentoM: 10.5,
     atributos: { forca: 12, destreza: 16, constituicao: 10, inteligencia: 8, sabedoria: 6, presenca: 6 },
     pagina: 55, domadoInicialmente: true,
-    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: a ficha concede +2 no acerto quando outro shikigami está a até 1,5 m do alvo; o beneficiário do bônus não é especificado. Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
-    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), habilidade('alcateia', 'Alcateia', 'Se outro shikigami estiver a até 1,5 m do alvo, concede +2 no acerto. O beneficiário do bônus não está especificado; aplicação manual.')],
+    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: quando outro shikigami estiver a até 1,5 m do alvo, o Cão atacante recebe +2 no acerto (definição do usuário). Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
+    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), { ...habilidade('alcateia', 'Alcateia', 'Quando outro Shikigami estiver a até 1,5 m do alvo, concede +2 ao ataque do Cão. O bônus é verificado automaticamente ao usar Mordida.'), statusAutomacao: 'executavel' }],
   },
   {
     id: 'nue', nome: 'Nue', grau: 'quarto', custoPE: 3, hp: 25, defesa: 19, deslocamentoM: 10.5,
@@ -125,7 +127,7 @@ const perfis: ModeloFonteDezSombras[] = [
     descricao: 'Segurar: língua até 9 m, disputa Luta contra Atletismo e aplica Agarrado; o alvo pode tentar escapar no início de seus turnos. Arremessar: só contra alvo agarrado, 2d6+3 impacto, Reflexos reduz o efeito; falha causa Caído. Fora de Risco: reação até 4,5 m, compara Reflexos do Sapo com o total do ataque; se superar, nega o ataque e move a criatura protegida até 3 m para espaço livre. Desempate, consentimento e origem da distância não são definidos.',
     acoes: [
       ataque({ id: 'arremessar', nome: 'Arremessar', dano: '2d6+3', tipoDano: 'DI', bonusAtaque: 0, statusAutomacao: 'manual', descricaoRegra: 'Somente contra alvo Agarrado. O alvo faz Reflexos; falha também causa Caído. O texto-fonte não define a fórmula do TR.' }),
-      habilidade('segurar', 'Segurar', 'Disputa Luta do Sapo contra Atletismo do alvo, alcance da língua 9 m; sucesso aplica Agarrado. Fuga no início do turno do alvo.'),
+      { ...habilidade('segurar', 'Segurar', 'Disputa Luta do Sapo contra Atletismo do alvo até 9 m; sucesso aplica Agarrado. A fuga ocorre no início do turno do alvo usando a regra geral de agarrão.'), alcanceM: 9, statusAutomacao: 'executavel' },
       habilidade('fora-de-risco', 'Fora de Risco', 'Reação para proteger criatura até 4,5 m: teste de Reflexos do Sapo contra o total do ataque; se superar, anula o ataque e move o protegido até 3 m para espaço livre. Empate e aceitação do deslocamento permanecem indefinidos.', 'reacao'),
     ],
   },
@@ -137,19 +139,20 @@ const perfis: ModeloFonteDezSombras[] = [
     acoes: [
       ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 3, bonusAtaque: 3 }),
       habilidade('entrelacar', 'Entrelaçar', 'Disputa Luta da Serpente contra Atletismo do alvo e aplica Agarrado; o alvo pode tentar escapar no início do próprio turno contra Acrobacia da Serpente. Alcance e limite de tamanho não constam da ficha.'),
-      habilidade('flexivel', 'Flexível', 'Concede +2 em Acrobacia. O bônus passivo ainda não está integrado ao motor.'),
+      { ...habilidade('flexivel', 'Flexível', 'Concede +2 em Acrobacia; o bônus é aplicado automaticamente nos testes de perícia da Serpente.'), statusAutomacao: 'executavel' },
     ],
+    caracteristicas: [{ tipo: 'caracteristica', nome: 'Flexível', texto: 'Bônus de +2 em Acrobacia.', efeitoOperacional: { tipo: 'bonus_pericia', pericia: 'acrobacia' } }],
   },
   {
     id: 'elefante-maximo', nome: 'Elefante Máximo', grau: 'terceiro', custoPE: 7, hp: 80, defesa: 22, deslocamentoM: 6,
     atributos: { forca: 18, destreza: 7, constituicao: 20, inteligencia: 6, sabedoria: 6, presenca: 6 },
-    pagina: 59, domadoInicialmente: false,
-    descricao: 'Golpe com Tromba: 3 m, +6, 2d12+4 impacto; a ficha não dá empurrão a este golpe. Torrente de Água: alcance 12 m, Fortitude, 2d10+4 impacto; sucesso causa metade, falha empurra 4,5 m. A ficha não diz se o empurrão também ocorre no sucesso. Defesa alternativa por Constituição; Grande; Robustez +10 PV máximos, apresentada separadamente dos 80 PV do perfil.',
+    pagina: 59, domadoInicialmente: false, bonusPVMaximo: 10,
+    descricao: 'Golpe com Tromba: 3 m, +6, 2d12+4 impacto; a ficha não dá empurrão a este golpe. Torrente de Água: alcance 12 m, Fortitude, 2d10+4 impacto; sucesso causa metade, falha empurra 4,5 m. A ficha não diz se o empurrão também ocorre no sucesso. Defesa alternativa por Constituição; Grande; Robustez soma +10 PV máximos aos 80 PV do perfil (90 no total).',
     acoes: [
       ataque({ id: 'golpe-tromba', nome: 'Golpe com Tromba', dano: '2d12+4', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2 }),
       { id: 'torrente-agua', nome: 'Torrente de Água', tipo: 'ataque', tipoExecucao: 'manual', teste: 'resistencia', categoriaAcao: 'acao_complexa', resistenciaAlvo: 'Fortitude', atributoCD: 'constituicao', multiplicadorDanoAtributo: 0, dano: '2d10+4', tipoDano: 'DI', danoNoSucesso: 'metade', alcanceM: 12, statusAutomacao: 'parcial', descricaoRegra: 'A falha no TR de Fortitude empurra 4,5 m automaticamente, mesmo se o dano for 0; paredes ou tokens podem interromper o movimento. A fonte n\u00e3o esclarece o empurr\u00e3o no sucesso, ent\u00e3o esse resultado requer decis\u00e3o do Mestre.' },
       habilidade('defesa-alternativa', 'Defesa Alternativa (Constituição)', 'O perfil lista Defesa Alternativa por Constituição, sem fórmula de recalcular Defesa; aplicação manual.'),
-      habilidade('robustez', 'Robustez', 'A característica lista +10 PV máximos em separado dos 80 PV do perfil; o total não foi inferido.'),
+      habilidade('robustez', 'Robustez', 'A característica adiciona +10 PV máximos aos 80 PV-base (90 no total).'),
     ],
   },
   {
@@ -167,14 +170,14 @@ const perfis: ModeloFonteDezSombras[] = [
     id: 'touro-perfurante', nome: 'Touro Perfurante', grau: 'segundo', custoPE: 6, hp: 85, defesa: 17, deslocamentoM: 16.5,
     atributos: { forca: 24, destreza: 8, constituicao: 18, inteligencia: 6, sabedoria: 6, presenca: 6 },
     pagina: 61, domadoInicialmente: false,
-    descricao: 'Investida Perfurante: ação complexa, 1,5 m, +9, 2d10+7 perfurante e +1d10 a cada 3 m percorridos em linha reta antes do ataque. O motor de combate ainda precisa registrar esse percurso e aplicar os dados adicionais; não há teto especificado. Movimento usa Força; Grande.',
-    acoes: [ataque({ id: 'investida-perfurante', nome: 'Investida Perfurante', dano: '2d10+7', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 2, statusAutomacao: 'parcial', descricaoRegra: 'Adicione +1d10 para cada 3 m percorridos em linha reta antes do ataque. O percurso adicional ainda requer integração com o movimento do mapa.' }), habilidade('movimento-alternativo', 'Movimento Alternativo (Força)', 'O deslocamento do perfil usa Força; o cálculo dinâmico ainda não está integrado.')],
+    descricao: 'Investida Perfurante: ação complexa, 1,5 m, +9, 2d10+7 perfurante e +1d10 a cada 3 m percorridos em linha reta antes do ataque. O movimento confirmado no mapa registra o percurso retilíneo e o ataque consome o bônus no turno. Movimento usa Força; Grande.',
+    acoes: [ataque({ id: 'investida-perfurante', nome: 'Investida Perfurante', dano: '2d10+7', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 2, statusAutomacao: 'executavel', descricaoRegra: 'Adiciona +1d10 por cada 3 m percorridos em linha reta no movimento confirmado neste turno; a marca é consumida na tentativa de Investida. Curvas não contam. A fonte não define teto de dados.' }), habilidade('movimento-alternativo', 'Movimento Alternativo (Força)', 'O deslocamento do perfil usa Força; o cálculo dinâmico ainda não está integrado.')],
   },
   {
     id: 'mahoraga', nome: 'General Divino Mahoraga', grau: 'especial', custoPE: 18, hp: 200, defesa: 26, deslocamentoM: 9,
     atributos: { forca: 24, destreza: 14, constituicao: 22, inteligencia: 8, sabedoria: 12, presenca: 8 },
-    pagina: 62, domadoInicialmente: false,
-    descricao: 'Adaptação Defensiva: após receber um tipo de dano, ganha resistência após 1 rodada e imunidade após outra; duração e dano simultâneo não estão definidos. Adaptação Ofensiva acumula +5 contra um alvo após cada tentativa que erra, permanecendo após o primeiro acerto; sem teto. Burlar Defesas reduz níveis de resistência após acertos em intervalos de rodada; escopo de alvo/tipo não está definido. Robustez +40 PV máximos. Ações com dados e cura são executáveis; as três adaptações ainda precisam de estado de combate próprio.',
+    pagina: 62, domadoInicialmente: false, bonusPVMaximo: 40,
+    descricao: 'Adaptação Defensiva: após receber um tipo de dano, ganha resistência após 1 rodada e imunidade após outra; duração e dano simultâneo não estão definidos. Adaptação Ofensiva acumula +5 contra um alvo após cada tentativa que erra, permanecendo após o primeiro acerto; sem teto. Burlar Defesas reduz níveis de resistência após acertos em intervalos de rodada; escopo de alvo/tipo não está definido. Robustez soma +40 PV máximos aos 200 PV do perfil (240 no total). Ações com dados e cura são executáveis; as três adaptações ainda precisam de estado de combate próprio.',
     acoes: [
       ataque({ id: 'golpe-punho', nome: 'Golpe com Punho', dano: '4d12+7', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2 }),
       ataque({ id: 'espada-energia-reversa', nome: 'Espada da Exterminação — Energia Reversa', dano: '4d12+7', tipoDano: 'DNR', alcanceM: 3, bonusAtaque: 2, descricaoRegra: 'Escolha esta versão quando a energia reversa for apropriada ao alvo. O critério da fonte não é formalizado.' }),
@@ -183,7 +186,7 @@ const perfis: ModeloFonteDezSombras[] = [
       habilidade('adaptacao-defensiva', 'Adaptação Defensiva', 'Após receber um tipo de dano, resistência após 1 rodada e imunidade após outra. Duração, tipos simultâneos e marco exato permanecem sem definição.'),
       habilidade('adaptacao-ofensiva', 'Adaptação Ofensiva', 'Cada tentativa que não acerta um alvo concede +5 cumulativo contra ele até o primeiro acerto; o bônus permanece depois. Sem teto ou definição de tentativa elegível.'),
       habilidade('burlar-defesas', 'Burlar Defesas', 'Ao acertar alvo resistente, depois de 1 rodada ignora um nível de resistência e após outra ignora por completo. A ficha não define progressão por alvo/tipo nem reinício.'),
-      habilidade('robustez', 'Robustez', 'A característica lista +40 PV máximos em separado dos 200 PV do perfil; o total não foi inferido.'),
+      habilidade('robustez', 'Robustez', 'A característica adiciona +40 PV máximos aos 200 PV-base (240 no total).'),
     ],
   },
   {
@@ -236,10 +239,43 @@ export function transformarCaoEmTotalidade(modelo: InvocacaoControlador): Invoca
           alcanceM: 1.5,
           bonusAtaque: 7,
           statusAutomacao: 'executavel',
-          descricaoRegra: 'Perfil publicado: +8 no acerto no n\u00edvel 1 com maestria +2; 3d8+6 perfurante.',
+          descricaoRegra: 'Perfil publicado: +8 no acerto no n\u00edvel 1 com maestria +2; 3d8+6 perfurante. Alcateia acrescenta +4 quando outro shikigami est\u00e1 a at\u00e9 1,5 m do alvo.',
         }
-      : { ...acao }),
+      : acao.id === 'alcateia'
+        ? { ...acao, statusAutomacao: 'executavel', descricaoRegra: 'Totalidade recebe +4 no acerto quando outro shikigami estiver a at\u00e9 1,5 m do alvo; aplicado automaticamente em Mordida.' }
+        : { ...acao }),
   };
+}
+
+/** Mede uma trajetória inteiramente reta e em um só sentido; trajetórias curvas não geram bônus de investida. */
+export function medirInvestidaRetaEmMetros(
+  pontos: readonly { x: number; y: number }[],
+  grid: { dpi: number; metersPerCell: number },
+): number {
+  if (pontos.length < 2 || !(grid.dpi > 0) || !(grid.metersPerCell > 0) ||
+    !pontos.every(ponto => Number.isFinite(ponto.x) && Number.isFinite(ponto.y))) return 0;
+  const inicio = pontos[0];
+  const fim = pontos[pontos.length - 1];
+  const dx = fim.x - inicio.x;
+  const dy = fim.y - inicio.y;
+  const comprimentoPx = Math.hypot(dx, dy);
+  if (comprimentoPx < 1) return 0;
+  let projecaoAnterior = -Infinity;
+  for (const ponto of pontos) {
+    const relativoX = ponto.x - inicio.x;
+    const relativoY = ponto.y - inicio.y;
+    const distanciaDaReta = Math.abs(dx * relativoY - dy * relativoX) / comprimentoPx;
+    const projecao = (relativoX * dx + relativoY * dy) / comprimentoPx;
+    if (distanciaDaReta > 2 || projecao + 0.5 < projecaoAnterior) return 0;
+    projecaoAnterior = projecao;
+  }
+  return comprimentoPx / grid.dpi * grid.metersPerCell;
+}
+
+export function dadosAdicionaisInvestidaPerfurante(distanciaM: number): number {
+  return Number.isFinite(distanciaM) && distanciaM > 0
+    ? Math.floor((distanciaM + 1e-6) / 3)
+    : 0;
 }
 
 export const HABILIDADES_TECNICA_DEZ_SOMBRAS = [
@@ -276,8 +312,8 @@ export function criarPacoteDezSombras(donoCharacterId: string, incluirHomebrew =
         origemAquisicao: `Feiticeiros e Maldições — ${`Enciclopédia Amaldiçoada v0.9, Cap. 2, p. ${perfil.pagina}`}`,
         historico: perfil.descricao,
         descricao: perfil.descricao,
-        hpAtual: perfil.hp,
-        hpMaximo: perfil.hp,
+        hpAtual: perfil.hp + (perfil.bonusPVMaximo ?? 0),
+        hpMaximo: perfil.hp + (perfil.bonusPVMaximo ?? 0),
         defesa: perfil.defesa,
         deslocamentoM: perfil.deslocamentoM,
         porte: (['grande-serpente', 'elefante-maximo', 'cervo-circular', 'touro-perfurante', 'mahoraga', 'tigre-funebre'] as IdDezSombras[]).includes(perfil.id) ? 'Grande' : 'Médio',
@@ -296,6 +332,7 @@ export function criarPacoteDezSombras(donoCharacterId: string, incluirHomebrew =
         acoes,
         caracteristicas: [
           { tipo: 'fonte', texto: `Enciclopédia Amaldiçoada v0.9, Cap. 2, p. ${perfil.pagina}` },
+          ...(perfil.caracteristicas ?? []),
           ...(perfil.opcionalHomebrew ? [{ tipo: 'homebrew', texto: 'Perfil especulativo e opcional; não oficial segundo o próprio livro.' }] : []),
         ],
       };
