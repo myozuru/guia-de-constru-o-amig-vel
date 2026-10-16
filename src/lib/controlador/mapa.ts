@@ -9,6 +9,7 @@ import { limiteAtivasPersonagem, type InvocacaoControlador } from './tipos';
 import { useLogStore } from '@/stores/useLogStore';
 import { useTestRequestStore } from '@/stores/useTestRequestStore';
 import { podeUsarVersaoAprovada } from '@/lib/controlador/aprovacao';
+import { transformarCaoEmTotalidade } from '@/lib/controlador/dezSombras';
 import { computeTotalDefense } from '@/lib/defenseCalc';
 import { rollD20Autonomo, rollDiceGroups } from '@/lib/dice';
 import { SISTEMA_PERICIAS, ROTULOS_PERICIAS } from '@/lib/omni/constantesDoSistema';
@@ -140,14 +141,92 @@ export function resolverDerrotaPendenteInvocacao(
   });
   if (!resultado.ok) return resultado;
 
-  const modelosAtualizados = (dono.invocacoesConhecidas ?? []).map(item => item.id === invocacaoId
+  const personagemAtual = useCharacterStore.getState().characters.find(character => character.id === donoId) ?? dono;
+  let modelosAtualizados = (personagemAtual.invocacoesConhecidas ?? []).map(item => item.id === invocacaoId
     ? {
       ...item,
       hpAtual: resultado.pvCatalogo,
       ...(resultado.perdaPermanente ? { perdaPermanente: true } : {}),
     }
     : item);
-  gravarInstancia(dono, resultado.instancia, { invocacoesConhecidas: modelosAtualizados });
+  let instanciasAtualizadas = instanciasComAtualizada(
+    personagemAtual,
+    InstanciaInvocacaoSchema.parse(resultado.instancia),
+  );
+
+  if (resultado.perdaPermanente &&
+      ['dez-sombras:cao-branco', 'dez-sombras:cao-preto'].includes(modelo.subcategoria ?? '')) {
+    const pairedSubcategoria = modelo.subcategoria === 'dez-sombras:cao-branco'
+      ? 'dez-sombras:cao-preto'
+      : 'dez-sombras:cao-branco';
+    const pairedModelo = modelosAtualizados.find(
+      item => item.subcategoria === pairedSubcategoria && !item.perdaPermanente,
+    );
+
+    if (pairedModelo) {
+      const instanciaFonte = [...instanciasAtualizadas].reverse().find(instancia =>
+        instancia.modeloId === pairedModelo.id &&
+        (instancia.estado === 'ativa' || instancia.estado === 'caida'),
+      );
+      const modeloTotalidade = transformarCaoEmTotalidade({
+        ...pairedModelo,
+        hpAtual: instanciaFonte?.hpAtual ?? pairedModelo.hpAtual,
+      });
+
+      if (modeloTotalidade) {
+        const instanciasTotalidade = instanciasAtualizadas.map(instancia => {
+          if (
+            instancia.modeloId !== pairedModelo.id ||
+            (instancia.estado !== 'ativa' && instancia.estado !== 'caida')
+          ) return instancia;
+
+          return InstanciaInvocacaoSchema.parse({
+            ...instancia,
+            version: instancia.version + 1,
+            hpAtual: Math.min(instancia.hpAtual, 35),
+            hpMaximoAtual: 35,
+          });
+        });
+        const instanciaCatalogo = [...instanciasTotalidade].reverse().find(instancia =>
+          instancia.modeloId === pairedModelo.id &&
+          (instancia.estado === 'ativa' || instancia.estado === 'caida'),
+        );
+        const modeloTotalidadeAtualizado = {
+          ...modeloTotalidade,
+          hpAtual: instanciaCatalogo?.hpAtual ?? modeloTotalidade.hpAtual,
+        };
+
+        for (const instancia of instanciasTotalidade) {
+          if (
+            instancia.modeloId !== pairedModelo.id ||
+            (instancia.estado !== 'ativa' && instancia.estado !== 'caida')
+          ) continue;
+          const token = useMapStore.getState().entities[instancia.tokenId];
+          if (
+            token?.ownerCharId !== donoId ||
+            token.invocationId !== pairedModelo.id ||
+            token.invocationInstanceId !== instancia.id
+          ) continue;
+          useMapStore.getState().updateEntity(token.id, {
+            hp: instancia.hpAtual,
+            hpMax: 35,
+            invocationDefense: 22,
+            invocationMovementM: 12,
+          });
+        }
+
+        modelosAtualizados = modelosAtualizados.map(item => item.id === pairedModelo.id
+          ? modeloTotalidadeAtualizado
+          : item);
+        instanciasAtualizadas = instanciasTotalidade;
+      }
+    }
+  }
+
+  useCharacterStore.getState().updateCharacter(personagemAtual.id, {
+    invocacoesConhecidas: modelosAtualizados,
+    instanciasInvocacao: instanciasAtualizadas,
+  });
   return { ok: true };
 }
 
@@ -383,6 +462,7 @@ export function invocarControlador(
   }
   const modelo = dono.invocacoesConhecidas?.find(i => i.id === invocacaoId && i.donoCharacterId === donoId);
   if (!modelo) return { ok: false, motivo: 'Invocação não pertence ao catálogo.' };
+  if (modelo.domado === false) return { ok: false, motivo: 'Este shikigami ainda precisa ser domado no ritual.' };
   if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: 'Esta invocação está vinculada a uma Horda e não pode ser invocada separadamente.' };
   if (modelo.perdaPermanente) return { ok: false, motivo: 'Esta invocação foi declarada como perda permanente.' };
   if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === invocacaoId && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
@@ -793,6 +873,7 @@ export function invocarControladores(
   const modelosValidos = modelos as InvocacaoControlador[];
   const validacoesOverride: Array<{ modelo: InvocacaoControlador; motivo: string; override: boolean }> = [];
   for (const modelo of modelosValidos) {
+    if (modelo.domado === false) return { ok: false, motivo: modelo.nome + ' ainda precisa ser domado no ritual.' };
     if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: `${modelo.nome} já está vinculada a uma Horda.` };
     if (modelo.perdaPermanente) return { ok: false, motivo: 'A invocação ' + modelo.nome + ' foi declarada como perda permanente.' };
     if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === modelo.id && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
@@ -1576,6 +1657,7 @@ async function executarAtaqueInvocacao(
   let inv = dono.invocacoesConhecidas?.find(i => i.id === invocacaoId && i.donoCharacterId === donoId);
   let acaoOriginal = inv?.acoes.find(a => a.id === acaoId);
   if (!inv || !acaoOriginal) return { ok: false, motivo: 'Ação ou invocação não encontrada.' };
+  if (acaoOriginal.statusAutomacao === 'manual') return { ok: false, motivo: 'Esta a\u00e7\u00e3o exige resolu\u00e7\u00e3o manual conforme a lacuna descrita na ficha.' };
   if (modoExecucao === 'reacao' && (acaoOriginal.categoriaAcao !== 'reacao' || (acaoOriginal.tipoExecucao !== 'omni' && acaoOriginal.tipoExecucao !== 'referencia_omni'))) {
     return { ok: false, motivo: 'A ação vinculada não está configurada como reação OMNI.' };
   }
@@ -1980,6 +2062,7 @@ export async function comandarSuporte(
   if (!modelo || !acaoOriginal) {
     return { ok: false, motivo: 'Ação ou invocação não encontrada.' };
   }
+  if (acaoOriginal.statusAutomacao === 'manual') return { ok: false, motivo: 'Esta a\u00e7\u00e3o exige resolu\u00e7\u00e3o manual conforme a lacuna descrita na ficha.' };
   const resolucaoOmni = acaoOriginal.tipoExecucao === 'omni' || acaoOriginal.tipoExecucao === 'referencia_omni'
     ? resolverAcaoOmniInvocacao(acaoOriginal, useOmniEntidadesStore.getState().entidades)
     : undefined;
@@ -2028,7 +2111,10 @@ export async function comandarSuporte(
   });
   if (alvosBrutos.some(alvo => !alvo)) return { ok: false, motivo: 'Todos os alvos precisam ter uma ficha e um token visível no mapa.' };
   const alvos = alvosBrutos as AlvoSuporte[];
-  if (alvos.some(alvo => alvo.personagem.category === 'INIMIGO' && alvo.personagem.id !== donoId)) {
+  if (acao.somenteProprio && alvos.some(alvo => alvo.tipo !== 'invocacao' || alvo.token.id !== servo.id)) {
+    return { ok: false, motivo: 'Esta habilidade só pode atingir a própria invocação.' };
+  }
+  if (!acao.permiteInimigos && alvos.some(alvo => alvo.personagem.category === 'INIMIGO' && alvo.personagem.id !== donoId)) {
     return { ok: false, motivo: 'Ações de suporte só podem escolher o próprio Controlador ou aliados.' };
   }
   if (alvos.some(alvo => alvo.tipo === 'invocacao' &&
@@ -2055,9 +2141,12 @@ export async function comandarSuporte(
   const calculado = calcularEfeitoSuporte(modelo, acao, repeticoes);
   if (!calculado.ok) return calculado;
   const possuiEnergiaReversa = capacidadeEnergiaReversaInvocacao(modelo, dono);
-  const curaReal = calculado.efeito.tipo === 'cura' && possuiEnergiaReversa;
+  const curaLivre = calculado.efeito.tipo === 'cura' && acao.curaRealSemCusto === true;
+  const curaReal = calculado.efeito.tipo === 'cura' && (possuiEnergiaReversa || curaLivre);
   let custoOverride: number | undefined;
-  if (curaReal) {
+  if (curaLivre) {
+    custoOverride = 0;
+  } else if (curaReal) {
     if (acao.custoPE !== 2) return { ok: false, motivo: 'A cura real por Energia Reversa precisa custar exatamente 2 PE.' };
     custoOverride = 2;
   } else if (calculado.efeito.tipo === 'cura' && acao.custoPE === 2) {

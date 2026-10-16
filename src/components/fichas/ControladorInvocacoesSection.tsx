@@ -16,11 +16,13 @@ import { formatarSegundosTempoInvocacao, tempoAdicionalEmSegundos } from '@/lib/
 import { assetCache } from '@/components/mapa/assetCache';
 import { decidirAprovacaoInvocacao, decidirAprovacaoLegadaInvocacao, submeterAprovacaoInvocacao } from '@/lib/controlador/aprovacao.functions';
 import { SISTEMA_PERICIAS, ROTULOS_PERICIAS } from '@/lib/omni/constantesDoSistema';
-import { invocacaoTreinadaNaPericia, parseFormulaDanoInvocacao } from '@/lib/controlador/rolagens';
+import { calcularBonusAtaqueInvocacao, invocacaoTreinadaNaPericia, parseFormulaDanoInvocacao } from '@/lib/controlador/rolagens';
 import { bonusPericiaCaracteristicas } from '@/lib/controlador/passivas';
 import { definirAutomacaoInvocacao } from '@/lib/controlador/autonomia';
 import { useProfileStore } from '@/stores/useProfileStore';
 import { calcularHorda } from '@/lib/controlador/hordas';
+import { DEZ_SOMBRAS_FORMAS_DERIVADAS as DEZ_SOMBRAS_FORMAS_REFERENCIA, HABILIDADES_TECNICA_DEZ_SOMBRAS, criarPacoteDezSombras } from '@/lib/controlador/dezSombras';
+import { DEZ_SOMBRAS_FORMAS_DERIVADAS, criarFormasDerivadasDezSombras } from '@/lib/controlador/dezSombrasDerivadas';
 
 type Fonte = { id: string; nome: string; tipo: 'grimorio' | 'omni'; hp: number; defesa: number; deslocamento: number; porte: InvocacaoControlador['porte']; acoes: InvocacaoControlador['acoes'] };
 const numero = (valor: unknown, padrao: number): number => {
@@ -177,10 +179,36 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
       }
     } finally { setBusyAtaque(false); }
   };
+  const listarAlvosNoAlcance = (invocacaoId: string, alcanceM: number): string[] => {
+    const mapa = useMapStore.getState();
+    const fonte = Object.values(mapa.entities).find(entity => entity.ownerCharId === character.id && entity.invocationId === invocacaoId && (entity.hp ?? 0) > 0 && entity.invocationState === 'ativa');
+    if (!fonte || !Number.isFinite(alcanceM) || alcanceM < 0) return [];
+    const pixelsPorMetro = (mapa.gridConfig.dpi || 70) / (mapa.gridConfig.metersPerCell || 1.5);
+    if (!Number.isFinite(pixelsPorMetro) || pixelsPorMetro <= 0) return [];
+    const alcancePx = alcanceM * pixelsPorMetro;
+    const ids = new Set<string>();
+    for (const entity of Object.values(mapa.entities)) {
+      if (entity.hidden || mapa.layerVisible[entity.layer ?? 'tokens'] === false) continue;
+      if (entity.invocationId && (!entity.ownerCharId || entity.invocationState === 'derrotada' || entity.invocationState === 'dissipada')) continue;
+      const id = entity.invocationId ? 'invoc:' + entity.id : entity.characterId;
+      if (!id) continue;
+      const donoAlvoId = entity.invocationId ? entity.ownerCharId : entity.characterId;
+      const personagemAlvo = allCharacters.find(alvo => alvo.id === donoAlvoId);
+      if (personagemAlvo?.category === 'INIMIGO' && personagemAlvo.id !== character.id) continue;
+      const distancia = Math.hypot((fonte.x + fonte.w / 2) - (entity.x + entity.w / 2), (fonte.y + fonte.h / 2) - (entity.y + entity.h / 2));
+      if (distancia <= alcancePx + 1e-6) ids.add(id);
+    }
+    return [...ids];
+  };
   const executarSuporte = async (invocacaoId: string, acaoId: string) => {
-    const chave = `${invocacaoId}:${acaoId}`;
-    const selecionados = alvosSuporte[chave] ?? [];
-    if (!selecionados.length || busySuporte) return;
+    const chave = invocacaoId + ':' + acaoId;
+    const acao = catalogo.find(item => item.id === invocacaoId)?.acoes.find(item => item.id === acaoId);
+    const tokenFonte = Object.values(useMapStore.getState().entities).find(entity => entity.ownerCharId === character.id && entity.invocationId === invocacaoId && (entity.hp ?? 0) > 0);
+    const selecionados = acao?.somenteProprio && tokenFonte
+      ? ['invoc:' + tokenFonte.id]
+      : acao?.todosNoAlcance ? listarAlvosNoAlcance(invocacaoId, acao.alcanceM ?? 0)
+        : alvosSuporte[chave] ?? [];
+    if (!selecionados.length || busySuporte) { if (!selecionados.length) setErro('Nenhum alvo válido está ao alcance desta ação.'); return; }
     setBusySuporte(true); setErro(''); setMensagem('');
     try {
       const r = await comandarSuporte(character.id, invocacaoId, acaoId, selecionados);
@@ -229,7 +257,48 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
     setConfirmandoPerdaDerrota(null);
   };
   const [libraryQuery, setLibraryQuery] = useState('');
+  const [incluirTigreFunebre, setIncluirTigreFunebre] = useState(true);
   const catalogo = character.invocacoesConhecidas ?? [];
+  const temTecnicaDezSombras = (character.tecnicaAmaldicoada ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().includes('dez sombras');
+  const importarDezSombras = () => {
+    if (!temTecnicaDezSombras) {
+      setErro('Cadastre a técnica amaldiçoada Dez Sombras no personagem antes de importar este pacote.');
+      return;
+    }
+    const existentes = new Set(catalogo.filter(item => item.pacoteRegras === 'dez-sombras').map(item => item.subcategoria));
+    const fichasBase = criarPacoteDezSombras(character.id, incluirTigreFunebre);
+    const fichasDerivadas = criarFormasDerivadasDezSombras(character.id);
+    const novos = [...fichasBase, ...fichasDerivadas].filter(item => !existentes.has(item.subcategoria));
+    if (!novos.length) {
+      setMensagem('As fichas selecionadas das Dez Sombras já estão na biblioteca.');
+      return;
+    }
+    updateCharacter(character.id, {
+      invocacoesConhecidas: [...catalogo, ...novos],
+      limiteInvocacoesConhecidas: max ?? undefined,
+      limiteInvocacoesAtivas: ativas,
+    });
+    setErro('');
+    const quantidadeBase = novos.filter(item => !item.formaDerivada).length;
+    const quantidadeDerivada = novos.filter(item => item.formaDerivada).length;
+    setMensagem(`${quantidadeBase} indivíduo(s)-base e ${quantidadeDerivada} forma(s) derivada(s) adicionados. Cães iniciais vêm domados; as demais fichas ficam bloqueadas até ritual ou confirmação manual do Mestre.`);
+  };
+  const registrarRitualConcluido = (invocacaoId: string) => {
+    if (!isMaster) return;
+    updateCharacter(character.id, {
+      invocacoesConhecidas: catalogo.map(item => item.id === invocacaoId ? { ...item, domado: true } : item),
+    });
+    setMensagem('Ritual registrado pelo Mestre. O shikigami pode ser invocado.');
+  };
+  const confirmarRequisitosFormaDerivada = (invocacaoId: string) => {
+    if (!isMaster) return;
+    updateCharacter(character.id, {
+      invocacoesConhecidas: catalogo.map(item => item.id === invocacaoId && item.formaDerivada
+        ? { ...item, domado: true }
+        : item),
+    });
+    setMensagem('O Mestre confirmou manualmente os requisitos da forma derivada. Alcance de posicionamento e aprovação da ficha ainda são verificados normalmente.');
+  };
   const assetForFicha = (inv: InvocacaoControlador) => {
     const principal = inv.imagemAssetId ? assetCache.get(inv.imagemAssetId) : null;
     const fallback = inv.imagemFallbackAssetId ? assetCache.get(inv.imagemFallbackAssetId) : null;
@@ -245,6 +314,8 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
   }, [catalogo]);
   const controlador = character.specialization === 'Controlador';
   const max = controlador ? limiteInvocacoesConhecidas(character.level) : null;
+  const individuosBase = catalogo.filter(inv => !inv.formaDerivada);
+  const formasDerivadas = catalogo.filter(inv => inv.formaDerivada);
   const ativas = limiteAtivasPersonagem(character.specialization, character.treinoControle ?? 0);
   const ordemGrauHorda = { quarto: 1, terceiro: 2, segundo: 3, primeiro: 4, especial: 5 } as const;
   const hordaLider = catalogo.find(inv => inv.id === hordaLiderId);
@@ -559,10 +630,41 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
   return (
     <div className="space-y-3 rounded-lg border border-border p-3 text-sm">
       <div className="inv-toolbar"><div><p className="inv-eyebrow">Biblioteca do controlador</p><h2>Suas invocações</h2></div>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar ficha</button>}</div>
+      {controlador && <section className="inv-section space-y-2 rounded border border-border p-3" aria-label="Pacote Dez Sombras">
+        <strong>Pacote da técnica Dez Sombras</strong>
+        <p className="text-xs text-muted-foreground">O material disponível identifica nove indivíduos-base; as fontes do vault não identificam o décimo. O Tigre Fúnebre permanece uma opção homebrew especulativa e não preenche essa vaga. Este pacote também importa Abismo e Agito como formas derivadas separadas, sem contá-las como indivíduos-base. Os dois Cães iniciais já vêm domados; os demais indivíduos exigem ritual, e as formas derivadas exigem confirmação manual do Mestre. O alcance de posicionamento não é definido: configure-o em cada ficha. A esfera de 18 m do ritual não é tratada como alcance de invocação. Regra da campanha: cada Cão custa 2 PE; invocar o par custa 4 PE.</p>
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={incluirTigreFunebre} onChange={event => setIncluirTigreFunebre(event.target.checked)} />
+          Incluir Tigre Fúnebre como opção homebrew especulativa
+        </label>
+        <button type="button" className="inv-primary disabled:opacity-50" disabled={!temTecnicaDezSombras} onClick={importarDezSombras}>
+          Importar fichas das Dez Sombras
+        </button>
+        {!temTecnicaDezSombras && <p className="text-xs text-muted-foreground">Cadastre primeiro “Dez Sombras” como técnica amaldiçoada do personagem.</p>}
+        <details className="rounded border border-border p-2">
+          <summary>Habilidades da técnica e formas derivadas</summary>
+          <div className="mt-2 space-y-3">
+            <div>
+              <strong className="text-xs">Técnica</strong>
+              <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                {HABILIDADES_TECNICA_DEZ_SOMBRAS.map(habilidade => <li key={habilidade.id}><strong>{habilidade.nome} - {habilidade.automacao === 'parcial' ? 'Parcial' : 'Manual'}</strong> - {habilidade.descricao}</li>)}
+              </ul>
+            </div>
+            <div>
+              <strong className="text-xs">Formas derivadas (não são indivíduos adicionais na lista-base)</strong>
+              <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                {DEZ_SOMBRAS_FORMAS_REFERENCIA.map(forma => <li key={forma.id}><strong>{forma.nome} | p. {forma.pagina}</strong> - {forma.descricao}</li>)}
+                <li><strong>Fichas separadas importáveis:</strong> {DEZ_SOMBRAS_FORMAS_DERIVADAS.map(forma => forma.nome).join(' e ')}. Não contam como indivíduos-base e exigem confirmação manual dos requisitos pelo Mestre.</li>
+              </ul>
+            </div>
+            <p className="text-xs">Manual e Parcial indicam que a regra está visível, mas o motor não automatiza todos os efeitos. Lacunas da fonte permanecem explícitas.</p>
+          </div>
+        </details>
+      </section>}
       <label className="inv-field">Buscar na biblioteca<input type="search" value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} placeholder="Nome ou apelido" /></label>
       {catalogo.length === 0 && <div className="inv-empty"><div className="inv-empty-icon" aria-hidden="true">◇</div><h3>Sua biblioteca começa aqui</h3><p>Crie a primeira ficha para organizar suas invocações e acompanhar a aprovação do Mestre.</p>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar primeira ficha</button>}</div>}
       {catalogo.length > 0 && !catalogo.some(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.toLocaleLowerCase())) && <p role="status" className="inv-description">Nenhuma invocação corresponde à busca.</p>}
-      <dl className="inv-library-hud" aria-label="Resumo da biblioteca"><div><dt>Conhecidas / limite</dt><dd>{catalogo.length} / {max ?? 'Interlúdio'}</dd></div><div><dt>Em campo / limite</dt><dd>{ativos.length} / {ativas}</dd></div><div><dt>Selecionadas</dt><dd>{invocacoesSelecionadas.length} / 2</dd></div><div><dt>Aguardando aprovação</dt><dd>{catalogo.filter(inv => inv.aprovacaoMestre === 'pendente').length}</dd></div></dl>
+      <dl className="inv-library-hud" aria-label="Resumo da biblioteca"><div><dt>Indivíduos / limite</dt><dd>{individuosBase.length} / {max ?? 'Interlúdio'}</dd></div><div><dt>Formas derivadas</dt><dd>{formasDerivadas.length}</dd></div><div><dt>Em campo / limite</dt><dd>{ativos.length} / {ativas}</dd></div><div><dt>Selecionadas</dt><dd>{invocacoesSelecionadas.length} / 2</dd></div><div><dt>Aguardando aprovação</dt><dd>{catalogo.filter(inv => inv.aprovacaoMestre === 'pendente').length}</dd></div></dl>
       {catalogo.length > 0 && (
 <div className="inv-command-bar flex flex-wrap items-end gap-2">
         <label className="block min-w-40 flex-1 text-xs">Direção dos comandos de movimento
@@ -659,7 +761,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
         const alcanceConfigurado = Number.isFinite(inv.alcanceInvocacaoM) && (inv.alcanceInvocacaoM ?? -1) >= 0;
         const aguardandoRodadaHorda = character.instanciasInvocacao?.some(item =>
           item.membrosHordaRemovidos?.some(membro => membro.modeloId === inv.id && membro.bloqueioRodadas > 0));
-        const podeSelecionar = !aguardandoRodadaHorda && !emHorda && !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
+        const podeSelecionar = !aguardandoRodadaHorda && !emHorda && inv.domado !== false && !inv.perdaPermanente && !ativo && !derrotaPendente && aprovado && alcanceConfigurado && (estadoIntermediario.ok || (isMaster && Boolean(motivosOverride[inv.id]?.trim())));
         return (
         <div key={inv.id} className="inv-card flex flex-wrap items-center justify-between gap-2 rounded border border-border p-2">
           <div className="inv-card-header flex items-center gap-3">
@@ -670,6 +772,21 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
           </div>
           <div className="inv-acquisition-status basis-full text-xs" data-status={inv.aprovacaoMestre}>Aquisição: {inv.aprovacaoMestre === 'pendente' ? 'Aguardando aprovação do Mestre' : inv.aprovacaoMestre === 'rejeitada' ? 'Rejeitada — edite e solicite novamente' : 'Aprovada'}</div>
           <div className={'basis-full text-xs ' + (derrotaPendente ? 'inv-error' : estadoInstancia === 'caida' ? 'inv-warning' : 'text-muted-foreground')}>Estado de combate: {rotuloEstado}{estadoInstancia === 'derrotada' && instancia ? ` (PV ${instancia.hpAtual})` : ''}</div>
+          {inv.pacoteRegras === 'dez-sombras' && inv.domado === false && <div className="basis-full space-y-1 text-xs">
+            {inv.formaDerivada ? <>
+              <p>Forma derivada bloqueada; não pode ser invocada até o Mestre confirmar manualmente os requisitos listados. O sistema não verifica os pré-requisitos automaticamente.</p>
+              {inv.requisitosFormaDerivada && <ul className="list-disc pl-5">{inv.requisitosFormaDerivada.map(requisito => <li key={requisito}>{requisito}</li>)}</ul>}
+              {isMaster && <button type="button" className="rounded border px-2 py-1" onClick={() => confirmarRequisitosFormaDerivada(inv.id)}>Confirmar requisitos e liberar forma</button>}
+            </> : <>
+              <p>Ritual de domar pendente; esta ficha não pode ser invocada.</p>
+              {isMaster && <button type="button" className="rounded border px-2 py-1" onClick={() => registrarRitualConcluido(inv.id)}>Registrar ritual bem-sucedido</button>}
+            </>}
+          </div>}
+          {inv.formaDerivada && <div className="basis-full text-xs text-muted-foreground"><strong>Forma derivada — não ocupa vaga de indivíduo-base.</strong>{inv.lacunasFormaDerivada && <ul className="list-disc pl-5">{inv.lacunasFormaDerivada.map(lacuna => <li key={lacuna}>{lacuna}</li>)}</ul>}{inv.valoresProvisoriosFormaDerivada?.length ? <p>Valores provisórios: {inv.valoresProvisoriosFormaDerivada.join(', ')}.</p> : null}</div>}
+          {inv.opcionalHomebrew && <div className="basis-full text-xs text-amber-500">Homebrew opcional — especulativo segundo a própria fonte.</div>}
+          {inv.referenciaRegra && <div className="basis-full text-xs text-muted-foreground">{inv.referenciaRegra}</div>}
+          {inv.pacoteRegras === 'dez-sombras' && !alcanceConfigurado && <p role="status" className="basis-full text-xs inv-warning">O livro não define o alcance de posicionamento após domar. Edite a ficha para configurar essa distância antes de invocar.</p>}
+          {inv.pacoteRegras === 'dez-sombras' && inv.descricao && <InvocationDisclosure className="inv-card-disclosure basis-full"><summary>Resumo da ficha e ressalvas da fonte</summary><p className="text-xs text-muted-foreground">{inv.descricao}</p></InvocationDisclosure>}
           {ehLiderHorda && <div className="basis-full text-xs inv-warning">A Horda usa um único token, pool de PV e contribuição temporal. A dissipação fica bloqueada até definir como os PV gerais retornam às fichas individuais.</div>}
           {ehLiderHorda && tokenHorda?.invocationEffectiveSize && <div className="basis-full text-xs text-muted-foreground">Porte efetivo: {tokenHorda.invocationEffectiveSize}</div>}
           {aguardandoRodadaHorda && <div className="basis-full text-xs inv-warning">Saiu da Horda com seus PV individuais. Aguarde a próxima rodada para invocar novamente.</div>}
@@ -752,8 +869,13 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
               <button type="button" disabled={inv.perdaPermanente || emHorda} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => setEditando(editando === inv.id ? null : inv.id)}>Adicionar ataque</button>
             </div>
             {inv.acoes.filter(a => a.tipo === 'ataque' || a.teste === 'ataque' || a.teste === 'resistencia').map(a => (
-              <div key={a.id} className="flex items-center justify-between text-xs">
-                <span>{a.nome}: {a.dano ?? 'sem dano'} · {a.alcanceM ?? 1.5} m · acerto {a.bonusAtaque ?? 0}</span>
+              <div key={a.id} className="flex items-start justify-between gap-2 text-xs">
+                <div className="space-y-1">
+                  <div>{a.nome}: {a.dano ?? 'sem dano'} · {a.alcanceM !== undefined ? a.alcanceM + ' m' : 'alcance n\u00e3o definido'} · {a.teste === 'resistencia' ? 'TR: ' + (a.resistenciaAlvo ?? 'n\u00e3o especificado') : 'acerto ' + (calcularBonusAtaqueInvocacao(character, inv, a)?.total ?? a.bonusAtaque ?? 0)}
+                    {a.statusAutomacao && <span className="ml-2 rounded border px-1">{a.statusAutomacao === 'executavel' ? 'Automático' : a.statusAutomacao === 'parcial' ? 'Parcial' : 'Manual'}</span>}
+                  </div>
+                  {a.descricaoRegra && <p className="text-muted-foreground">{a.descricaoRegra}</p>}
+                </div>
                 <button type="button" disabled={inv.perdaPermanente || emHorda} className="rounded border px-2 py-1 disabled:opacity-50" onClick={() => removerAtaque(inv.id, a.id)}>Excluir</button>
               </div>
             ))}
@@ -776,6 +898,17 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
               </div>
             )}
           </InvocationDisclosure>
+          {inv.pacoteRegras === 'dez-sombras' && inv.acoes.some(acao => acao.tipo === 'habilidade') && (
+            <InvocationDisclosure className="inv-card-disclosure basis-full space-y-2">
+              <summary>Habilidades e traços {inv.acoes.filter(acao => acao.tipo === 'habilidade').length}</summary>
+              <ul className="space-y-2 text-xs">
+                {inv.acoes.filter(acao => acao.tipo === 'habilidade').map(acao => <li key={acao.id}>
+                  <strong>{acao.nome} - Manual</strong>
+                  {acao.descricaoRegra && <p className="text-muted-foreground">{acao.descricaoRegra}</p>}
+                </li>)}
+              </ul>
+            </InvocationDisclosure>
+          )}
           {ativos.some(e => e.invocationId === inv.id) && acoesDeAtaque(inv).length > 0 && (
             <div className="basis-full space-y-2 border-t border-border/60 pt-2">
               {acoesDeAtaque(inv).some(acao => !['multiplo', 'area'].includes(configOmniDaAcao(acao)?.tipo_alvo ?? 'unico')) && <label className="block text-xs">Alvo para ação individual
@@ -808,10 +941,11 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
                   const temAlvos = multiplo
                     ? (alvosAtaqueMultiplo[`${inv.id}:${a.id}`]?.length ?? 0) > 0
                     : area || Boolean(alvosAtaque[inv.id]);
-                return <button key={a.id} type="button" disabled={busyAtaque || !temAlvos}
+                return <button key={a.id} type="button" disabled={busyAtaque || !temAlvos || a.statusAutomacao === 'manual'}
+                    title={a.statusAutomacao === 'manual' ? 'A fonte deixa uma etapa sem regra suficiente para automação.' : a.statusAutomacao === 'parcial' ? 'O dano/TR foi aplicado; consulte a descrição para os efeitos restantes.' : undefined}
                     onClick={() => void atacar(inv.id, a.id)}
                     className="rounded border border-primary px-2 py-1 text-xs disabled:opacity-50">
-                    Usar ação: {a.nome}
+                    Usar ação: {a.nome}{a.statusAutomacao === 'parcial' ? ' (parcial)' : a.statusAutomacao === 'manual' ? ' (manual)' : ''}
                   </button>;
                 })}
               </div>
@@ -845,20 +979,22 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
                 const multiplos = acao.efeitoSuporte?.alvos === 'multiplos';
                 return <div key={acao.id} className="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <label className="block text-xs">{acao.nome} · {acao.efeitoSuporte?.efeito}
-                    <InvocationSelect aria-label={`Alvo de suporte ${acao.nome}`} multiple={multiplos} className="mt-1 min-h-9 w-full rounded border border-input bg-background p-2"
-                      value={multiplos ? alvos : (alvos[0] ?? '')}
-                      onChange={event => {
-                        const valores = multiplos
-                          ? Array.from(event.target.selectedOptions, option => option.value).filter(Boolean)
-                          : event.target.value ? [event.target.value] : [];
-                        setAlvosSuporte(atual => ({ ...atual, [chave]: valores }));
-                      }}>
-                      <option value="">{multiplos ? 'Selecione um ou mais alvos no mapa' : 'Selecione uma ficha no mapa'}</option>
-                      {opcoesAlvoSuporte.map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
-                    </InvocationSelect>
+                    {acao.todosNoAlcance || acao.somenteProprio
+                      ? <span className="mt-1 block text-muted-foreground">{acao.todosNoAlcance ? 'Afeta todas as criaturas visíveis em até ' + (acao.alcanceM ?? 0) + ' m.' : 'Afeta apenas esta invocação.'}</span>
+                      : <InvocationSelect aria-label={'Alvo de suporte ' + acao.nome} multiple={multiplos} className="mt-1 min-h-9 w-full rounded border border-input bg-background p-2"
+                        value={multiplos ? alvos : (alvos[0] ?? '')}
+                        onChange={event => {
+                          const valores = multiplos
+                            ? Array.from(event.target.selectedOptions, option => option.value).filter(Boolean)
+                            : event.target.value ? [event.target.value] : [];
+                          setAlvosSuporte(atual => ({ ...atual, [chave]: valores }));
+                        }}>
+                        <option value="">{multiplos ? 'Selecione um ou mais alvos no mapa' : 'Selecione uma ficha no mapa'}</option>
+                        {opcoesAlvoSuporte.map(alvo => <option key={alvo.id} value={alvo.id}>{alvo.nome}</option>)}
+                      </InvocationSelect>}
                   </label>
-                  <button type="button" disabled={busySuporte || alvos.length === 0} className="self-end rounded border border-primary px-2 py-2 text-xs disabled:opacity-50" onClick={() => void executarSuporte(inv.id, acao.id)}>
-                    Usar suporte
+                  <button type="button" disabled={busySuporte || acao.statusAutomacao === 'manual' || (!(acao.todosNoAlcance || acao.somenteProprio) && alvos.length === 0)} title={acao.statusAutomacao === 'manual' ? 'Esta habilidade permanece manual até as lacunas da fonte serem resolvidas.' : undefined} className="self-end rounded border border-primary px-2 py-2 text-xs disabled:opacity-50" onClick={() => void executarSuporte(inv.id, acao.id)}>
+                    {acao.statusAutomacao === 'manual' ? 'Manual: ' + acao.nome : acao.todosNoAlcance ? 'Curar todas no alcance' : acao.somenteProprio ? 'Regenerar' : 'Usar suporte'}
                   </button>
                 </div>;
               })}

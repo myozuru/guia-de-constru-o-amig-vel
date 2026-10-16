@@ -15,6 +15,18 @@ export interface InvocacaoControlador {
   id: string;
   donoCharacterId: string;
   nome: string;
+  pacoteRegras?: "dez-sombras";
+  /** Formas derivadas não consomem vagas de indivíduos-base. */
+  formaDerivada?: boolean;
+  /** Requisitos listados para confirmação manual; o sistema não os avalia automaticamente. */
+  requisitosFormaDerivada?: string[];
+  /** Lacunas ou dependências que devem permanecer visíveis na ficha. */
+  lacunasFormaDerivada?: string[];
+  /** Campos provisórios por ausência de valor explícito na fonte. */
+  valoresProvisoriosFormaDerivada?: string[];
+  referenciaRegra?: string;
+  opcionalHomebrew?: boolean;
+  domado?: boolean;
   schemaVersion?: 1;
   version?: number;
   donoProfileId?: string;
@@ -107,6 +119,13 @@ export interface InvocacaoControlador {
     custoPE?: number;
     recarga?: string;
     recargaConfigurada?: { quantidade: number; unidade: 'inicio_turno_dono' | 'inicio_rodada' | 'manual' };
+    descricaoRegra?: string;
+    statusAutomacao?: 'executavel' | 'parcial' | 'manual';
+    formulaCura?: string;
+    curaRealSemCusto?: boolean;
+    permiteInimigos?: boolean;
+    todosNoAlcance?: boolean;
+    somenteProprio?: boolean;
     alvo?: string;
     [campo: string]: unknown;
   }>;
