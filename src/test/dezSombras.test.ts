@@ -175,7 +175,7 @@ const ATAQUES_ESPERADOS: AtaqueEsperado[] = [
   { modeloId: 'sapo', acaoId: 'arremessar', formula: '2d6+3', tipoDano: 'DI', alcanceM: undefined, bonusAtaque: 0, bonusEfetivo: undefined, status: 'manual', teste: 'ataque' },
   { modeloId: 'grande-serpente', acaoId: 'mordida', formula: '2d8+3', tipoDano: 'DP', alcanceM: 3, bonusAtaque: 3, bonusEfetivo: 5, status: 'executavel', teste: 'ataque' },
   { modeloId: 'elefante-maximo', acaoId: 'golpe-tromba', formula: '2d12+4', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 6, status: 'executavel', teste: 'ataque' },
-  { modeloId: 'elefante-maximo', acaoId: 'torrente-agua', formula: '2d10+4', tipoDano: 'DI', alcanceM: 12, bonusAtaque: undefined, bonusEfetivo: undefined, status: 'parcial', teste: 'resistencia' },
+  { modeloId: 'elefante-maximo', acaoId: 'torrente-agua', formula: '2d10+4', tipoDano: 'DI', alcanceM: 12, bonusAtaque: undefined, bonusEfetivo: undefined, status: 'executavel', teste: 'resistencia' },
   { modeloId: 'touro-perfurante', acaoId: 'investida-perfurante', formula: '2d10+7', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
   { modeloId: 'mahoraga', acaoId: 'golpe-punho', formula: '4d12+7', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
   { modeloId: 'mahoraga', acaoId: 'espada-energia-reversa', formula: '4d12+7', tipoDano: 'DNR', alcanceM: 3, bonusAtaque: 2, bonusEfetivo: 9, status: 'executavel', teste: 'ataque' },
