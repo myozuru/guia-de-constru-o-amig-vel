@@ -123,16 +123,19 @@ export const useInventoryStore = create<InventoryState>()(
         if (requestedId && get().deleted[requestedId]) throw new Error('Uma instância removida não pode ser recriada.');
         const snapshot = structuredClone(entity);
         const total = snapshot.usos?.total;
+        const hasCommerce = snapshot.comercio != null || opts?.markBought != null;
         const inst: InventoryItem = {
           instanceId: opts?.instanceId ?? uid(),
           ownerId,
           entity: {
             ...snapshot,
-            comercio: {
-              basePrice: snapshot.comercio?.basePrice ?? 0,
-              hiddenTags: snapshot.comercio?.hiddenTags ?? [],
-              isBought: opts?.markBought ?? snapshot.comercio?.isBought ?? false,
-            },
+            ...(hasCommerce ? {
+              comercio: {
+                basePrice: snapshot.comercio?.basePrice ?? 0,
+                hiddenTags: snapshot.comercio?.hiddenTags ?? [],
+                isBought: opts?.markBought ?? snapshot.comercio?.isBought ?? false,
+              },
+            } : {}),
           },
           acquiredAt: Date.now(),
           usosTotais: total,

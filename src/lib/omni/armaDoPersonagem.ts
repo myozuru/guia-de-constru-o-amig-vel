@@ -1,5 +1,5 @@
 import { exemplarArma, entidadeDoExemplar } from './exemplarArma';
-import { ALL_WEAPONS, findWeaponByName, requiresTwoHands, resolveWeaponDamage, type Weapon, type WeaponPropertyKind } from '@/lib/weapons';
+import { ALL_WEAPONS, findWeaponModelById, findWeaponByName, requiresTwoHands, resolveWeaponDamage, type Weapon, type WeaponPropertyKind } from '@/lib/weapons';
 import { useInventoryStore } from '@/stores/useInventoryStore';
 import { useItemStore } from '@/stores/useItemStore';
 import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
@@ -22,7 +22,7 @@ export function armaDoPersonagem(charId: string, nome: string, instanciaId?: str
   if (!ent) return findWeaponByName(nome);
   const nomeArma = ent.replica ? item?.replicaArma ?? ent.nome : ent.nome;
   const meta = getWeaponMeta(ent);
-  const base = ALL_WEAPONS.find(w => w.id === meta.modeloId) ?? findWeaponByName(nomeArma);
+  const base = findWeaponModelById(meta.modeloId) ?? findWeaponByName(nomeArma);
   const weapon: Weapon = base ? { ...base, name: nomeArma, properties: [...base.properties] } : {
     id: ent.id, name: nomeArma, category: 'complexa', range: 'melee', group: 'Espada',
     damage: meta.dano ?? '1d6', damageType: 'Ct', critRange: 20, properties: [], spaces: meta.espacos ?? 1, cost: ent.comercio?.basePrice ?? 0,
@@ -54,6 +54,8 @@ export function armaDoPersonagem(charId: string, nome: string, instanciaId?: str
     weapon.damageType = fisico[tipo as keyof typeof fisico] ?? null;
   }
   if (ent.combatData?.critRange != null) weapon.critRange = ent.combatData.critRange;
+  const featureId = ent.tags.find((tag) => tag.startsWith('feature:'))?.slice('feature:'.length);
+  if (featureId === 'lanca-vetorial-rubra') weapon.specialFeatureId = featureId;
   if (meta.espacos != null) weapon.spaces = meta.espacos;
   if (meta.alcanceLongo != null) { weapon.rangeLong = meta.alcanceLongo; weapon.rangeShort = meta.alcanceCurto ?? meta.alcanceLongo; }
   return weapon;

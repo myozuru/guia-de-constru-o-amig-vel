@@ -7,7 +7,7 @@
  * de armas e o dropdown produzam entidades equivalentes.
  */
 import type { Weapon, DamageType } from '@/lib/weapons';
-import { ALL_WEAPONS, resolveWeaponDamage } from '@/lib/weapons';
+import { ALL_WEAPONS, EXTERNAL_WEAPONS, resolveWeaponDamage } from '@/lib/weapons';
 import { canonicalizarChave } from './keyAliases';
 import type { EntidadeOmni, CombatEffect } from './tipos';
 
@@ -57,7 +57,7 @@ export function describeWeapon(w: Weapon): string {
   const special = w.specialText ? `\n\n*${w.specialText}*` : '';
   return [
     `**${compl} • ${alc} • Grupo ${w.group}**`,
-    dmgLine, crit, alcDist, `Espaços: ${w.spaces} • Custo: ${w.cost}`, props,
+    dmgLine, crit, alcDist, `Espa\u00e7os: ${w.spaces}${w.cost == null ? '' : ` \u2022 Custo: ${w.cost}`}`, props,
   ].filter(Boolean).join('\n') + special;
 }
 
@@ -74,6 +74,7 @@ export function buildWeaponTags(w: Weapon): string[] {
     `espacos:${w.spaces}`,
     `mao:${hands}`,
   ];
+  if (w.specialFeatureId) tags.push(`feature:${w.specialFeatureId}`);
   if (w.rangeShort != null && w.rangeLong != null) {
     tags.push(`alcance:${w.rangeShort}/${w.rangeLong}`);
   }
@@ -149,6 +150,7 @@ export function applyWeaponModel(base: EntidadeOmni, w: Weapon): EntidadeOmni {
   const userTags = (base.tags ?? []).filter(
     (t) => !t.startsWith('grupo:') && !t.startsWith('prop:') && !t.startsWith('modelo:')
       && !t.startsWith('espacos:') && !t.startsWith('mao:') && !t.startsWith('alcance:')
+      && !t.startsWith('feature:')
       && t !== 'arma' && t !== 'simples' && t !== 'complexa'
       && t !== 'melee' && t !== 'ranged' && t !== 'thrown',
   );
@@ -196,5 +198,5 @@ export function setWeaponDamage(ent: EntidadeOmni, formula: string): EntidadeOmn
 }
 
 export function listWeaponModels(): Weapon[] {
-  return ALL_WEAPONS;
+  return [...ALL_WEAPONS, ...EXTERNAL_WEAPONS];
 }

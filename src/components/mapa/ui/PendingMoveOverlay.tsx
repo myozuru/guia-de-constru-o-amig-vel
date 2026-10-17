@@ -25,6 +25,7 @@ import { combatMoveBudget } from '@/lib/movementBudget';
 import { isFreeformFor } from '@/lib/freeformMode';
 import { confirmarMovimentoInvocacao } from '@/lib/controlador/mapa';
 import { toast } from '@/hooks/use-toast';
+import { hasLancaReactionSuppression } from '@/lib/conditionEffects';
 
 
 export function PendingMoveOverlay() {
@@ -37,6 +38,7 @@ export function PendingMoveOverlay() {
   const setPendingMove = useMapStore((s) => s.setPendingMove);
   const updateEntity = useMapStore((s) => s.updateEntity);
   const addMovementUsed = useCombatStore((s) => s.addMovementUsed);
+  const resolveLancaAdvanceMovement = useCombatStore((s) => s.resolveLancaAdvanceMovement);
   const movementUsed = useCombatStore((s) => s.movementUsedByChar);
   const freeformMode = useCombatStore((s) => s.freeformMode);
   const character = useCharacterStore((s) =>
@@ -108,7 +110,11 @@ export function PendingMoveOverlay() {
         const atual = useMapStore.getState().entities[pending.entityId];
         const ficha = useCharacterStore.getState().characters.find(c => c.id === pending.charId);
         if (useMapStore.getState().pendingMove !== pending) return;
-        if (!atual || atual.x !== ent.x || atual.y !== ent.y) { setPendingMove(null); return; }
+        if (!atual || atual.x !== ent.x || atual.y !== ent.y) {
+          setPendingMove(null);
+          if (pending.lancaAdvanceId) resolveLancaAdvanceMovement(pending.lancaAdvanceId, 'interrupted');
+          return;
+        }
         if (r.cancelado || (ficha?.hpCurrent ?? 1) <= 0) { cancel(); return; }
       }
     addMovementUsed(pending.charId, pending.distM);
@@ -117,6 +123,7 @@ export function PendingMoveOverlay() {
     try {
       const oppState = useOpportunityStore.getState();
       const chars = useCharacterStore.getState().characters;
+      const suppressedReactionIds = new Set(chars.filter(hasLancaReactionSuppression).map((character) => character.id));
       const charNames: Record<string, string> = {};
       for (const c of chars) charNames[c.id] = c.name;
       const movingChar = useCharacterStore.getState().characters.find((c) => c.id === pending.charId);
@@ -129,7 +136,9 @@ export function PendingMoveOverlay() {
         grants: oppState.grants,
         charNames,
         grid: gridConfig,
-      }).filter((cand) => !(movingChar?.desengajadoDe ?? []).includes(cand.charId));
+      }).filter((cand) =>
+        !(movingChar?.desengajadoDe ?? []).includes(cand.charId) && !suppressedReactionIds.has(cand.charId),
+      );
       if (candidates.length > 0) {
         oppState.setPending({
           id: `${Date.now().toString(36)}`,
@@ -145,6 +154,7 @@ export function PendingMoveOverlay() {
     try { detectarZonaRisco(pending.charId); } catch { /* ignore */ }
     setPendingMove(null);
     confirmarMovimentoMapa(pending.entityId, de, movimento.trajetoria);
+    if (pending.lancaAdvanceId) resolveLancaAdvanceMovement(pending.lancaAdvanceId, 'ready');
     } finally { locked.current = false; setBusy(false); }
   };
   const cancel = () => {
@@ -168,6 +178,7 @@ export function PendingMoveOverlay() {
       getSocket()?.emit('entity:patch', payload);
     } catch { /* ignore */ }
     setPendingMove(null);
+    if (pending.lancaAdvanceId) resolveLancaAdvanceMovement(pending.lancaAdvanceId, 'interrupted');
   };
 
 

@@ -45,6 +45,12 @@ export interface ConditionMods {
   notes: string[];
 }
 
+export function hasLancaReactionSuppression(
+  character: { activeConditions?: Character['activeConditions'] } | undefined | null,
+): boolean {
+  return (character?.activeConditions ?? []).some((condition) => condition.conditionId === 'lanca-vetorial-sem-reacoes');
+}
+
 const EMPTY: ConditionMods = {
   attack: 0, skill: 0, save: 0, defense: 0,
   defenseMelee: 0, defenseRanged: 0,

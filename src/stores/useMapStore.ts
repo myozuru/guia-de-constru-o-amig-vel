@@ -415,6 +415,8 @@ interface MapState {
     trail: Vector2[];
     /** metros percorridos neste arrasto (preview) */
     distM: number;
+    /** A confirmação deste movimento conclui o deslocamento do Avanço Escarlate. */
+    lancaAdvanceId?: string;
   };
   setPendingMove: (v: MapState['pendingMove']) => void;
 

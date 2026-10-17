@@ -20,7 +20,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { ALL_CONDITIONS } from '@/types/conditions';
 import type { Character } from '@/types';
 import {
-  findWeaponByName, hasProperty, requiresTwoHands, isVersatile, type Weapon,
+  findWeaponByName, hasProperty, requiresTwoHands, isVersatile, resolveWeaponDamage, type Weapon,
 } from '@/lib/weapons';
 import {
   buildAttackContext, rollAttack, pickAttackAbility, getAbilityMod, type AttackResult,
@@ -75,6 +75,19 @@ import { EspiritoLutaButton } from './EspiritoLutaButton';
 import { EspecialistaNv4Sections } from './EspecialistaNv4Sections';
 import { EspecialistaNv4CSections } from './EspecialistaNv4CSections';
 import { consumirTiro } from '@/lib/recargaRapida';
+import {
+  calcularCustoLanca, createLancaCombatRecord, lancaAttackEffects, lancaDamageFormula, lancaInstanceKey,
+  resolveLancaAttack, type LancaAttackMode, type LancaCombatRecord,
+} from '@/lib/lancaVetorial';
+import { combatMoveBudget } from '@/lib/movementBudget';
+import { WallsEngine } from '@/components/mapa/WallsEngine';
+import { prepareCollisionCache, resolveCollisionMove, type MapCollisionSegment, type MapCollisionToken } from '@/lib/mapCollision';
+import { useFogStore } from '@/stores/fogStore';
+import { buildSegments as buildFogSegments } from '@/lib/fog/visibility';
+import { amostrarTrajetoria } from '@/lib/omni/geometriaReacao';
+import { comPreviaMovimento } from '@/lib/mapa/movimentoConfirmado';
+import { selectOmniModifiers } from '@/lib/omni/omniBridge';
+import { useOpportunityStore } from '@/stores/useOpportunityStore';
 
 import { escondidoDe, revelarPara } from '@/lib/buscarOportunidade';
 import { registrarAtaqueCompensar } from '@/lib/compensarErro';
@@ -82,6 +95,14 @@ import { registrarAtaqueCompensar } from '@/lib/compensarErro';
 import { cn } from '@/lib/utils';
 
 interface Props { character: Character; }
+
+interface LancaAttackResolution {
+  key: string;
+  targetId: string;
+  mode: LancaAttackMode;
+  before: LancaCombatRecord;
+  fractureEligible: boolean;
+}
 
 const REACTION_COMBAT_TALENT_IDS = [
   'tal-apaziguador-tecnica',
@@ -113,6 +134,31 @@ const REACTION_LABELS: Record<string, { name: string; trigger: string; effect: s
   },
 };
 
+function setLancaSentenceSuppression(targetId: string, wielder: Character, instanceId: string, active: boolean): void {
+  const target = useCharacterStore.getState().characters.find((character) => character.id === targetId);
+  if (!target) return;
+  const id = `lanca-vetorial-sem-reacoes:${wielder.id}:${instanceId}`;
+  const exists = (target.activeConditions ?? []).some((condition) => condition.id === id);
+  if (active && !exists) {
+    useCharacterStore.getState().addCondition(targetId, {
+      id,
+      conditionId: 'lanca-vetorial-sem-reacoes',
+      name: 'Reações suprimidas',
+      icon: '⛔',
+      remainingTurns: -1,
+      remainingRounds: -1,
+      sourceCharId: wielder.id,
+      sourceCharName: wielder.name,
+      sourceEntityId: 'lanca-vetorial-rubra',
+      sourceInstanceId: instanceId,
+    });
+  } else if (!active && exists) {
+    useCharacterStore.getState().updateCharacter(targetId, {
+      activeConditions: (target.activeConditions ?? []).filter((condition) => condition.id !== id),
+    });
+  }
+}
+
 export function AttackPanel({ character: cProp }: Props) {
   // Sempre a ficha viva da mesa (posturas, bônus e PE mudam durante o turno).
   const c = useCharacterStore((s) => s.characters.find((x) => x.id === cProp.id)) ?? cProp;
@@ -126,6 +172,11 @@ export function AttackPanel({ character: cProp }: Props) {
   const resetTurnStateFor = useCharacterStore(s => s.resetTurnStateFor);
   const inCombat = useCombatStore(s => s.inCombat);
   const initiativeOrder = useCombatStore(s => s.initiativeOrder);
+  const lancaRecords = useCombatStore(s => s.lancaVetorial);
+  const pendingLancaAdvance = useCombatStore(s => s.pendingLancaAdvance);
+  const movementUsedByChar = useCombatStore(s => s.movementUsedByChar);
+  const pendingMove = useMapStore(s => s.pendingMove);
+  const opportunityPending = useOpportunityStore(s => s.pending);
   const isMaster = useRoleStore(s => s.role) === 'MASTER';
   // Fontes externas para o cálculo central de Defesa (mantém reatividade).
   const omniInventoryMap = useInventoryStore(s => s.items);
@@ -253,6 +304,14 @@ export function AttackPanel({ character: cProp }: Props) {
   const targetDistanceM = target
     ? distanceBetweenChars(c.id, target.id, mapEntities, gridConfig, mapIdentities)
     : null;
+  const isLancaWeapon = mainWeapon?.specialFeatureId === 'lanca-vetorial-rubra';
+  const lancaKey = isLancaWeapon ? lancaInstanceKey(c.id, c.mainHandWeaponInstanceId, mainWeapon.name) : null;
+  const lancaRecord = lancaKey
+    ? lancaRecords[lancaKey] ?? createLancaCombatRecord(c.id, c.mainHandWeaponInstanceId ?? mainWeapon!.id)
+    : null;
+  const lancaMarks = target && lancaRecord?.targetId === target.id ? lancaRecord.marks : 0;
+  const lancaFractureAvailable = lancaRecord?.fractureAvailable ?? true;
+  const lancaSuppressedTarget = target?.activeConditions?.some((condition) => condition.conditionId === 'lanca-vetorial-sem-reacoes') ?? false;
   const rangeBlockReason =
     mainWeapon && target
       ? checkWeaponRange(c.id, target.id, mainWeapon, mapEntities, gridConfig, meleeRangeBonus, mapIdentities, posturaAlcanceMult(c))
@@ -321,6 +380,8 @@ export function AttackPanel({ character: cProp }: Props) {
   const rollInFlightRef = useRef(false);
   const golpeRollRef = useRef<{ sel: GolpeSelecao; target: Character | null | undefined; amploTarget?: Character } | null>(null);
   const luckRollInFlightRef = useRef(false);
+  const lancaAttackResolutionRef = useRef<LancaAttackResolution | null>(null);
+  const lancaActionLockRef = useRef(false);
 
   // ─── Artes do Combate (Especialista em Combate) ────────────────────────────
   const temArtes = hasArtesCombate(c);
@@ -346,6 +407,11 @@ export function AttackPanel({ character: cProp }: Props) {
     round: combatRound,
     currentCharId: initiativeOrder[combatTurnIdx]?.charId ?? null,
   };
+  const activeLancaTurn = !inCombat || turnInfo.currentCharId === c.id;
+  const lancaEquippedItems = omniInventoryList.filter((item) => item.ownerId === c.id && item.isEquipped && item.equippedSlot);
+  const lancaMovementBonus = selectOmniModifiers(c, lancaEquippedItems, omniEntidadesMap).deslocamento;
+  const lancaMoveBudget = combatMoveBudget(c, activeLancaTurn, lancaMovementBonus) ?? 0;
+  const lancaMovementRemaining = Math.max(0, lancaMoveBudget - (movementUsedByChar[c.id] ?? 0));
   const cVivo = useCharacterStore((s) => s.characters.find((x) => x.id === c.id)) ?? c;
   const temArremessos = hasArremessosPotentes(cVivo);
   const arremessosLigado = arremessosAtivo(cVivo, turnInfo);
@@ -453,12 +519,31 @@ export function AttackPanel({ character: cProp }: Props) {
   };
 
   // ─── Rolar ataque ──────────────────────────────────────────────────────────
-  const handleRoll = async (opts?: { reroll?: boolean }) => {
+  const handleRoll = async (opts?: { reroll?: boolean; lancaMode?: LancaAttackMode }) => {
     const isReroll = !!opts?.reroll;
     if (!mainWeapon) {
       addLog('combat', `⚠️ ${c.name} não tem arma equipada na mão principal.`);
       return;
     }
+    const lancaMode: LancaAttackMode | null = isLancaWeapon
+      ? (opts?.lancaMode ?? (isReroll ? lancaAttackResolutionRef.current?.mode : 'normal') ?? 'normal')
+      : null;
+    const priorLancaResolution = isReroll && lancaAttackResolutionRef.current?.key === lancaKey
+      ? lancaAttackResolutionRef.current
+      : null;
+    const lancaBefore = priorLancaResolution?.before ?? (lancaRecord ? { ...lancaRecord } : null);
+    const attackMarks = target && lancaBefore?.targetId === target.id ? lancaBefore.marks : 0;
+    const lancaEffects = lancaMode && lancaBefore
+      ? lancaAttackEffects(attackMarks, lancaBefore.fractureAvailable, lancaMode)
+      : null;
+    const fractureEligible = !!lancaEffects?.fractureDice;
+    const attackWeapon = lancaMode && lancaEffects
+      ? {
+          ...mainWeapon,
+          omniDamageFormula: lancaDamageFormula(resolveWeaponDamage(mainWeapon, usingTwoHanded || twoHanded) ?? '1d10', lancaMode, lancaEffects.fractureDice),
+          omniDamageType: 'Pf',
+        }
+      : mainWeapon;
     // ─── Emperrar: arma de fogo travada não dispara ─────────────────────────
     if (armaEstaEmperrada(useCharacterStore.getState().characters.find((x) => x.id === c.id) ?? c, mainWeapon)) {
       addLog('combat', `🚫 ${mainWeapon.name} está emperrada — gaste uma Ação Comum para desemperrar.`);
@@ -609,10 +694,11 @@ export function AttackPanel({ character: cProp }: Props) {
     const ability = pickAttackAbility(c, mainWeapon);
     const devB = devastacaoBonus(useCharacterStore.getState().characters.find((x) => x.id === c.id) ?? c, target?.id);
     devRdRef.current = devB.rd;
+    const auto = target ? getAutoCritFromConditions(target, attackKind) : null;
     const ctx = buildAttackContext({
       attacker: c,
-      weapon: mainWeapon,
-      targetDefense: targetDef + (ataqueOportunidade && target?.ultimoSegundoAtivo ? 5 : 0), targetId: isReroll ? undefined : target?.id,
+      weapon: attackWeapon,
+      targetDefense: targetDef - (lancaEffects?.defenseIgnore ?? 0) + (ataqueOportunidade && target?.ultimoSegundoAtivo ? 5 : 0), targetId: isReroll ? undefined : target?.id,
       semRecursao: ataqueConcedidoSemRecursao,
       situation: {
         pistoleiro: pistoleiroUsado,
@@ -630,6 +716,17 @@ export function AttackPanel({ character: cProp }: Props) {
         attackerConcentratedAura,
         attackerIsGrappled,
         arteExecucao: artesAtivas && arteExecucao,
+        hitBonusExtra: lancaEffects?.hitBonus,
+        critBonusExtra: lancaEffects?.critRangeBonus,
+        forceCritical: isLancaWeapon && !!auto?.autoCrit,
+        autoCriticalReason: isLancaWeapon && auto?.autoCrit ? auto.reason : undefined,
+        lancaSentenceSuppression: lancaMode === 'sentence' && lancaBefore
+          ? {
+              sourceCharId: c.id,
+              sourceCharName: c.name,
+              sourceInstanceId: c.mainHandWeaponInstanceId ?? lancaKey ?? mainWeapon.id,
+            }
+          : undefined,
         ...golpeSit,
         ...arsenalSit,
       },
@@ -664,9 +761,7 @@ export function AttackPanel({ character: cProp }: Props) {
       addLog('combat', `🔧 ${mainWeapon.name} emperrou! O ataque falha automaticamente — gaste uma Ação Comum para desemperrar.`);
     }
     // Auto-crit contra alvos Inconsciente / Indefeso / Paralisado (CaC).
-    const auto = target ? getAutoCritFromConditions(target, attackKind) : null;
-
-    if (auto && !result.criticalFail && !result.emperrou) {
+    if (auto && !result.critical && !result.criticalFail && !result.emperrou) {
       const extraDamage = result.hit ? result.damageTotal : Math.max(0, ctx.abilityMod);
       result = {
         ...result,
@@ -676,6 +771,32 @@ export function AttackPanel({ character: cProp }: Props) {
         damageTotal: result.hit ? result.damageTotal * 2 : extraDamage * 2,
         notes: [...result.notes, `🎯 Auto-acerto crítico: alvo ${auto.reason}`],
       };
+    }
+    if (isLancaWeapon && lancaMode && lancaKey && target && lancaBefore) {
+      const nextRecord = resolveLancaAttack(lancaBefore, {
+        targetId: target.id,
+        mode: lancaMode,
+        hit: result.hit,
+        critical: result.critical,
+        fractureEligible,
+      });
+      useCombatStore.getState().setLancaRecord(lancaKey, nextRecord);
+      lancaAttackResolutionRef.current = { key: lancaKey, targetId: target.id, mode: lancaMode, before: lancaBefore, fractureEligible };
+      if (lancaMode === 'sentence') {
+        setLancaSentenceSuppression(
+          target.id,
+          c,
+          c.mainHandWeaponInstanceId ?? lancaKey ?? mainWeapon.id,
+          result.hit,
+        );
+      }
+      if (result.hit) {
+        const beforeMarks = lancaBefore.targetId === target.id ? lancaBefore.marks : 0;
+        const afterMarks = nextRecord.targetId === target.id ? nextRecord.marks : 0;
+        if (lancaMode === 'sentence') addLog('combat', `🩸 Sentença Rubra: ${target.name} fica sem Reações até o início do próximo turno de ${c.name}; as 3 marcas foram consumidas.`);
+        else if (lancaMode === 'advance') addLog('combat', `🔻 Avanço Escarlate: ${target.name} recebe 2 marcas (total ${afterMarks}/3).`);
+        else addLog('combat', `🔻 Núcleo Carmesim: ${target.name} ${beforeMarks ? `passa de ${beforeMarks} para ${afterMarks}` : `recebe ${afterMarks}`} marca(s) vetorial(is).`);
+      }
     }
     metadadosAtaqueRef.current = {
       ...metadadosAtaqueRef.current, critical: result.critical, criticalFail: result.criticalFail,
@@ -915,8 +1036,17 @@ export function AttackPanel({ character: cProp }: Props) {
   // ─── Rolar Dano (fase 2, manual) ───────────────────────────────────────────
   const handleRollDamage = async () => {
     if (phase !== 'await-dmg' || !pendingResult || !mainWeapon) return;
-    const result = pendingResult;
+    let result = pendingResult;
     setPhase('rolling-dmg');
+    if (result.damageNeedsReroll) {
+      const rolled = await rollDiceCom(c.id, result.damageDice);
+      result = {
+        ...result,
+        damageTotal: rolled.total + (result.damageFlatBonus ?? 0),
+        damageRolls: rolled.rolls,
+        damageNeedsReroll: false,
+      };
+    }
     setTickDmg(result.damageTotal);
     setLastResult(result);
     setPendingResult(null);
@@ -1212,6 +1342,22 @@ export function AttackPanel({ character: cProp }: Props) {
 
   const handleRerollDamage = async () => {
     if (!mainWeapon || !lastResult || !lastResult.canRerollDamage) return;
+    if (isLancaWeapon) {
+      const rolled = await rollDiceCom(c.id, lastResult.damageDice);
+      const damageTotal = rolled.total + (lastResult.damageFlatBonus ?? 0);
+      if (damageTotal > lastResult.damageTotal) {
+        setLastResult({ ...lastResult, damageTotal, damageRolls: rolled.rolls, canRerollDamage: false });
+        addLog('combat', `🎲 Ataque Infalível: novo dano da Lança ${damageTotal} (substituiu ${lastResult.damageTotal}).`);
+        if (target) await applyDamage(target.id, damageTotal - lastResult.damageTotal, (lastResult.damageType ?? undefined) as never, {
+          attackerId: c.id, source: 'arma', isMelee: true, ignoresRD: true,
+          attack: { ...metadadosAtaqueRef.current, critical: lastResult.critical, criticalFail: lastResult.criticalFail },
+        });
+      } else {
+        setLastResult({ ...lastResult, canRerollDamage: false });
+        addLog('combat', `🎲 Ataque Infalível: dano original mantido (${lastResult.damageTotal} ≥ ${damageTotal}).`);
+      }
+      return;
+    }
     const ability = pickAttackAbility(c, mainWeapon);
     const ctx = buildAttackContext({
       attacker: c, weapon: mainWeapon, targetDefense: targetDef,
@@ -1256,6 +1402,10 @@ export function AttackPanel({ character: cProp }: Props) {
     if (lastResult.criticalFail) return;
     if ((c.luckCurrent ?? 0) <= 0) return;
     if (phase !== 'await-dmg' && phase !== 'done') return;
+    if (isLancaWeapon && lastResult.hit && phase === 'done') {
+      addLog('combat', '🚫 Após o dano da Lança ser aplicado, a rolagem de ataque não pode ser reaberta sem reverter as consequências já resolvidas.');
+      return;
+    }
 
     luckRollInFlightRef.current = true;
     const res = spendLuck(c.id);
@@ -1288,8 +1438,22 @@ export function AttackPanel({ character: cProp }: Props) {
 
     // Recalcula com o novo natural — recria contexto e força o d20 manualmente.
     const ability = pickAttackAbility(c, mainWeapon);
+    const lancaSaved = isLancaWeapon && lancaAttackResolutionRef.current?.key === lancaKey
+      ? lancaAttackResolutionRef.current
+      : null;
+    const lancaSavedMarks = lancaSaved && lancaSaved.before.targetId === target?.id ? lancaSaved.before.marks : 0;
+    const lancaSavedEffects = lancaSaved
+      ? lancaAttackEffects(lancaSavedMarks, lancaSaved.before.fractureAvailable, lancaSaved.mode)
+      : null;
+    const rerollWeapon = lancaSaved
+      ? {
+          ...mainWeapon,
+          omniDamageFormula: lancaDamageFormula(resolveWeaponDamage(mainWeapon, usingTwoHanded || twoHanded) ?? '1d10', lancaSaved.mode, lancaSavedEffects?.fractureDice ?? 0),
+          omniDamageType: 'Pf',
+        }
+      : mainWeapon;
     const ctx = buildAttackContext({
-      attacker: c, weapon: mainWeapon, targetDefense: targetDef,
+      attacker: c, weapon: rerollWeapon, targetDefense: targetDef - (lancaSavedEffects?.defenseIgnore ?? 0),
       situation: {
         twoHanded: usingTwoHanded || twoHanded,
         targetUnaware, targetProne,
@@ -1298,6 +1462,9 @@ export function AttackPanel({ character: cProp }: Props) {
         targetHasAuraEmbacada,
         attackerConcentratedAura,
         attackerIsGrappled,
+        hitBonusExtra: lancaSavedEffects?.hitBonus,
+        critBonusExtra: lancaSavedEffects?.critRangeBonus,
+        forceCritical: !!lancaSaved && !!getAutoCritFromConditions(target, attackKind)?.autoCrit,
       },
       trainedRanges: [
         ...(c.meleeTrained ? (['melee'] as const) : []),
@@ -1306,37 +1473,45 @@ export function AttackPanel({ character: cProp }: Props) {
     });
     // Recompõe modificadores totais (idênticos ao roll original).
     const modsTotal = lastResult.modifiers.reduce((a, m) => a + m.value, 0);
-    const newAttackTotal = newNat + modsTotal;
-    // Mantém canRerollDamage e damage se já tinha sido rolado; senão re-resolve hit.
-    const w = mainWeapon;
-    const baseCrit = w.critRange ?? 20;
-    // Aproximação: usa critRange do resultado anterior se já era crítico, senão o base.
-    const wasCrit = lastResult.critical;
-    const critRangeApprox = wasCrit ? Math.min(baseCrit, oldNat) : baseCrit;
-    const newCritical = newNat >= critRangeApprox;
-    const newHit = newAttackTotal >= ctx.targetDefense || newCritical;
+    const newAttackTotal = keptNat + modsTotal;
+    const auto = target ? getAutoCritFromConditions(target, attackKind) : null;
+    const critThreshold = lastResult.criticalThreshold ?? mainWeapon.critRange ?? 20;
+    const newCritical = !!auto?.autoCrit || keptNat >= critThreshold;
+    const newHit = !!auto?.autoHit || newAttackTotal >= ctx.targetDefense || newCritical;
 
     // Atualiza memória de turno (substitui).
     recordAttackResult(c.id, newHit, { replaceLast: true });
+    if (lancaSaved && target && lancaKey) {
+      const resolved = resolveLancaAttack(lancaSaved.before, {
+        targetId: target.id,
+        mode: lancaSaved.mode,
+        hit: newHit,
+        critical: newCritical,
+        fractureEligible: lancaSaved.fractureEligible,
+      });
+      useCombatStore.getState().setLancaRecord(lancaSaved.key, resolved);
+      lancaAttackResolutionRef.current = { ...lancaSaved, fractureEligible: lancaSaved.fractureEligible };
+      if (lancaSaved.mode === 'sentence') {
+        setLancaSentenceSuppression(target.id, c, c.mainHandWeaponInstanceId ?? lancaKey ?? mainWeapon.id, newHit);
+      }
+    }
 
     // Atualiza UI: novo natural/total/hit/critical, zera dano (jogador rola de novo se acertou).
-    setLastResult({
+    const rerolledAttackResult = {
       ...lastResult,
       natural: keptNat,
       attackTotal: newAttackTotal,
       hit: newHit,
       critical: newCritical,
+      criticalThreshold: critThreshold,
       criticalFail: false,
-      damageTotal: 0,
-      damageRolls: [],
+      ...(newHit ? { damageTotal: 0, damageRolls: [], damageNeedsReroll: true } : { damageTotal: 0, damageRolls: [], damageNeedsReroll: false }),
       notes: [...lastResult.notes, `🍀 Sorte: d20 re-rolado (${oldNat}→${newNat}, mantido ${keptNat})`],
-    });
+    };
+    setLastResult(rerolledAttackResult);
     if (newHit) {
       // Volta a esperar o jogador rolar o dano.
-      setPendingResult({
-        ...lastResult,
-        natural: keptNat, attackTotal: newAttackTotal, hit: newHit, critical: newCritical, criticalFail: false,
-      });
+      setPendingResult(rerolledAttackResult);
       setPhase('await-dmg');
     } else {
       setPhase('done');
@@ -1359,6 +1534,23 @@ export function AttackPanel({ character: cProp }: Props) {
       return;
     }
 
+    if (isLancaWeapon) {
+      let rolled: { rolls: number[]; total: number };
+      try { rolled = await rollDiceCom(c.id, lastResult.damageDice); }
+      finally { luckRollInFlightRef.current = false; }
+      const damageTotal = rolled.total + (lastResult.damageFlatBonus ?? 0);
+      const oldDmg = lastResult.damageTotal;
+      const keep = damageTotal > oldDmg;
+      addLog('combat', `🍀 ${c.name} gastou 1 Sorte: re-rolou dano da Lança (${oldDmg} vs ${damageTotal}) → mantém ${Math.max(oldDmg, damageTotal)}. Restam ${res.remaining}.`);
+      if (keep) {
+        setLastResult({ ...lastResult, damageTotal, damageRolls: rolled.rolls, notes: [...lastResult.notes, `🍀 Sorte: dano re-rolado (${oldDmg}→${damageTotal})`] });
+        if (target) await applyDamage(target.id, damageTotal - oldDmg, (lastResult.damageType ?? undefined) as never, {
+          attackerId: c.id, source: 'arma', isMelee: true, ignoresRD: true,
+          attack: { ...metadadosAtaqueRef.current, critical: lastResult.critical, criticalFail: lastResult.criticalFail },
+        });
+      }
+      return;
+    }
     const ability = pickAttackAbility(c, mainWeapon);
     const ctx = buildAttackContext({
       attacker: c, weapon: mainWeapon, targetDefense: targetDef,
@@ -1430,6 +1622,148 @@ export function AttackPanel({ character: cProp }: Props) {
     return <><ContadoresEquipamento charId={c.id} entidade={omniEntidadesMap[instancia.entity.id] ?? instancia.entity} /><SoltarItemButton charId={c.id} itemId={instancia.instanceId} /></>;
   };
 
+  const gastarAcaoLanca = (custoPe: number): boolean => {
+    const fresh = useCharacterStore.getState().characters.find((character) => character.id === c.id);
+    if (!fresh) return false;
+    const cost = calcularCustoLanca(fresh.actionsCurrent, fresh.tempPE, fresh.peCurrent, custoPe);
+    if (!cost.ok) { addLog('combat', `🚫 ${cost.reason}`); return false; }
+    useCharacterStore.getState().updateCharacter(c.id, {
+      actionsCurrent: cost.actionsCurrent,
+      tempPE: cost.tempPE,
+      peCurrent: cost.peCurrent,
+    });
+    return true;
+  };
+
+  const executarSentencaRubra = async () => {
+    if (!isLancaWeapon || !mainWeapon || !target || lancaActionLockRef.current) return;
+    const currentCombat = useCombatStore.getState();
+    const key = lancaInstanceKey(c.id, c.mainHandWeaponInstanceId, mainWeapon.name);
+    const record = currentCombat.lancaVetorial[key] ?? createLancaCombatRecord(c.id, c.mainHandWeaponInstanceId ?? mainWeapon.id);
+    if (record.targetId !== target.id || record.marks < 3) { addLog('combat', '🚫 Sentença Rubra exige 3 Marcas Vetoriais no alvo selecionado.'); return; }
+    if (!activeLancaTurn || (currentCombat.pendingLancaAdvance?.wielderId === c.id) || useMapStore.getState().pendingMove) { addLog('combat', '🚫 Termine a ação ou o movimento pendente antes de usar a Sentença Rubra.'); return; }
+    if (phase === 'rolling-hit' || phase === 'rolling-dmg' || phase === 'await-second-d20' || phase === 'await-dmg') { addLog('combat', '🚫 Termine a rolagem atual antes de confirmar a Sentença Rubra.'); return; }
+    const freshTarget = useCharacterStore.getState().characters.find((character) => character.id === target.id) ?? target;
+    const freshRange = checkWeaponRange(c.id, freshTarget.id, mainWeapon, useMapStore.getState().entities, useMapStore.getState().gridConfig, meleeRangeBonus, { casterProfileId: c.profileId, targetProfileId: freshTarget.profileId }, posturaAlcanceMult(c));
+    if (freshRange) { addLog('combat', `🚫 Sentença Rubra não pode alcançar o alvo: ${freshRange}`); return; }
+    lancaActionLockRef.current = true;
+    if (!gastarAcaoLanca(10)) { lancaActionLockRef.current = false; return; }
+    addLog('combat', `🩸 ${c.name} confirma Sentença Rubra: gasta 1 Ação Comum e 10 PE.`);
+    try { await handleRoll({ lancaMode: 'sentence' }); }
+    finally { lancaActionLockRef.current = false; }
+  };
+
+  const executarAvancoEscarlate = async () => {
+    if (!isLancaWeapon || !mainWeapon || !target || lancaActionLockRef.current) return;
+    const currentCombat = useCombatStore.getState();
+    const currentMap = useMapStore.getState();
+    if (!activeLancaTurn || currentCombat.pendingLancaAdvance?.wielderId === c.id || currentMap.pendingMove) { addLog('combat', '🚫 Termine o movimento pendente antes de confirmar Avanço Escarlate.'); return; }
+    if (phase === 'rolling-hit' || phase === 'rolling-dmg' || phase === 'await-second-d20' || phase === 'await-dmg') { addLog('combat', '🚫 Termine a rolagem atual antes de confirmar Avanço Escarlate.'); return; }
+    const freshTarget = useCharacterStore.getState().characters.find((character) => character.id === target.id) ?? target;
+    const freshDistance = distanceBetweenChars(c.id, freshTarget.id, currentMap.entities, currentMap.gridConfig, { casterProfileId: c.profileId, targetProfileId: freshTarget.profileId });
+    if (freshDistance === null) { addLog('combat', '🚫 Avanço Escarlate precisa das peças do portador e do alvo no mapa para medir o movimento e o alcance final.'); return; }
+    const reach = weaponRangeM ?? 3;
+    const movementNeeded = Math.max(0, freshDistance - reach);
+    const attackerEntity = Object.values(currentMap.entities).find((entity) => entity?.characterId === c.id);
+    const targetEntity = Object.values(currentMap.entities).find((entity) => entity?.characterId === freshTarget.id);
+    if (movementNeeded > 0 && (!attackerEntity || !targetEntity)) { addLog('combat', '🚫 Avanço Escarlate precisa das duas peças no mapa para calcular o deslocamento.'); return; }
+
+    let move: { start: { x: number; y: number }; end: { x: number; y: number }; distanceM: number; trail: { x: number; y: number }[] } | null = null;
+    if (movementNeeded > 0 && attackerEntity && targetEntity) {
+      const metersPerPx = (currentMap.gridConfig?.metersPerCell || 1.5) / (currentMap.gridConfig?.dpi || 70);
+      const remainingMovement = Math.min(3, lancaMovementRemaining);
+      const stepM = Math.min(3, movementNeeded, remainingMovement);
+      const dx = (targetEntity.x + targetEntity.w / 2) - (attackerEntity.x + attackerEntity.w / 2);
+      const dy = (targetEntity.y + targetEntity.h / 2) - (attackerEntity.y + attackerEntity.h / 2);
+      const centerDistance = Math.hypot(dx, dy);
+      const desiredPx = centerDistance > 0 ? stepM / metersPerPx : 0;
+      const desired = centerDistance > 0 ? { dx: dx / centerDistance * desiredPx, dy: dy / centerDistance * desiredPx } : { dx: 0, dy: 0 };
+      const fog = useFogStore.getState();
+      const blockerSegments: MapCollisionSegment[] = [
+        ...WallsEngine.blockingSegments(currentMap.walls, 'sight'),
+        ...buildFogSegments(fog.walls, fog.doors).map((segment) => [segment.a, segment.b] as MapCollisionSegment),
+      ];
+      const mover: MapCollisionToken = { origin: { x: attackerEntity.x, y: attackerEntity.y }, entity: attackerEntity };
+      const delta = resolveCollisionMove([mover], prepareCollisionCache(blockerSegments), { dx: 0, dy: 0 }, desired);
+      const end = { x: attackerEntity.x + delta.dx, y: attackerEntity.y + delta.dy };
+      const distanceM = Math.hypot(delta.dx, delta.dy) * metersPerPx;
+      move = {
+        start: { x: attackerEntity.x, y: attackerEntity.y }, end, distanceM,
+        trail: amostrarTrajetoria({ x: attackerEntity.x, y: attackerEntity.y }, end, (currentMap.gridConfig?.dpi || 70) / 4),
+      };
+    }
+
+    lancaActionLockRef.current = true;
+    if (!gastarAcaoLanca(4)) { lancaActionLockRef.current = false; return; }
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `lanca-avanco-${Date.now().toString(36)}`;
+    addLog('combat', `🔻 ${c.name} confirma Avanço Escarlate: gasta 1 Ação Comum e 4 PE antes do deslocamento.`);
+    if (!move || move.distanceM <= 0.01) {
+      useCombatStore.getState().setPendingLancaAdvance({ id, wielderId: c.id, targetId: freshTarget.id, status: 'interrupted' });
+      addLog('combat', '⛔ O trajeto do Avanço não permite deslocamento até o alcance; ação e PE permanecem gastos.');
+      lancaActionLockRef.current = false;
+      return;
+    }
+    if (!attackerEntity) {
+      useCombatStore.getState().setPendingLancaAdvance({ id, wielderId: c.id, targetId: freshTarget.id, status: 'interrupted' });
+      addLog('combat', '⛔ A peça do portador não está mais no mapa. Ação e PE permanecem gastos.');
+      lancaActionLockRef.current = false;
+      return;
+    }
+
+    useCombatStore.getState().setPendingLancaAdvance({ id, wielderId: c.id, targetId: freshTarget.id, status: 'movement' });
+    comPreviaMovimento(() => currentMap.updateEntity(attackerEntity!.id, { x: move!.end.x, y: move!.end.y }));
+    useMapStore.getState().setPendingMove({
+      entityId: attackerEntity.id,
+      charId: c.id,
+      startX: move.start.x,
+      startY: move.start.y,
+      trail: move.trail,
+      distM: move.distanceM,
+      lancaAdvanceId: id,
+    });
+    lancaActionLockRef.current = false;
+  };
+
+  const confirmarAtaqueAvanco = () => {
+    if (!pendingLancaAdvance || pendingLancaAdvance.wielderId !== c.id || pendingLancaAdvance.status !== 'ready') return;
+    if (targetId !== pendingLancaAdvance.targetId) { setTargetId(pendingLancaAdvance.targetId); addLog('combat', '🎯 O alvo do Avanço foi restaurado. Confirme o ataque novamente.'); return; }
+    const freshTarget = useCharacterStore.getState().characters.find((character) => character.id === pendingLancaAdvance.targetId);
+    const ms = useMapStore.getState();
+    const block = freshTarget && mainWeapon
+      ? checkWeaponRange(c.id, freshTarget.id, mainWeapon, ms.entities, ms.gridConfig, meleeRangeBonus, { casterProfileId: c.profileId, targetProfileId: freshTarget.profileId }, posturaAlcanceMult(c))
+      : 'O alvo ou a arma não está disponível.';
+    if (block) {
+      useCombatStore.getState().resolveLancaAdvanceMovement(pendingLancaAdvance.id, 'interrupted');
+      addLog('combat', `⛔ Avanço Escarlate interrompido antes do d20: ${block}. Ação e PE permanecem gastos.`);
+      return;
+    }
+    useCombatStore.getState().setPendingLancaAdvance(null);
+    void handleRoll({ lancaMode: 'advance' });
+  };
+
+  const lancaActionBlock = !target
+    ? 'Selecione um alvo.'
+    : !activeLancaTurn
+      ? 'A ação só pode ser confirmada no turno do portador.'
+      : pendingMove || pendingLancaAdvance?.wielderId === c.id
+        ? 'Há um movimento ou ataque da Lança pendente.'
+        : phase === 'rolling-hit' || phase === 'rolling-dmg' || phase === 'await-second-d20' || phase === 'await-dmg'
+          ? 'Conclua a rolagem atual.'
+          : (c.actionsCurrent ?? 1) < 1
+            ? 'Sem Ação Comum disponível.'
+            : ((c.tempPE ?? 0) + (c.peCurrent ?? 0)) < 4
+              ? 'PE insuficiente.'
+              : null;
+  const lancaSentenceBlock = lancaActionBlock
+    ?? (((c.tempPE ?? 0) + (c.peCurrent ?? 0)) < 10 ? 'PE insuficiente (precisa de 10).' : null)
+    ?? (lancaMarks < 3 ? 'Exige 3 marcas no alvo.' : rangeBlockReason ?? null);
+  const lancaAdvanceNeed = targetDistanceM === null ? null : Math.max(0, targetDistanceM - (weaponRangeM ?? 3));
+  const lancaAdvanceBlock = lancaActionBlock
+    ?? (lancaAdvanceNeed === null ? 'Peças do portador e do alvo são necessárias no mapa.' : null)
+    ?? (lancaAdvanceNeed !== null && lancaAdvanceNeed > 0 && lancaMovementRemaining <= 0 ? 'Sem deslocamento restante para alcançar o alvo.' : null);
+  const lancaAdvanceReady = pendingLancaAdvance?.wielderId === c.id && pendingLancaAdvance.status === 'ready';
+  const lancaAdvanceInterrupted = pendingLancaAdvance?.wielderId === c.id && pendingLancaAdvance.status === 'interrupted';
+
   return (
     <div className="px-4 pb-3">
       <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-3">
@@ -1457,6 +1791,91 @@ export function AttackPanel({ character: cProp }: Props) {
 
         {/* ─── AÇÕES ATIVAS & TÉCNICAS OMNI ───────────────────────────── */}
         <AcoesAtivasSection charId={c.id} incluirCategorias={['arma']} />
+
+        {isLancaWeapon && mainWeapon && (
+          <section className="rounded-xl border border-rose-500/40 bg-gradient-to-br from-rose-950/35 via-background/80 to-background p-3 space-y-3" aria-label="Núcleo Carmesim da Lança Vetorial Rubra">
+            <div className="flex items-start gap-3">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-rose-400/40 bg-rose-500/10 text-rose-300" aria-hidden="true">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold text-rose-100">Núcleo Carmesim</h3>
+                <p className="text-xs leading-relaxed text-muted-foreground">Marcas vetoriais do alvo e técnicas da arma.</p>
+              </div>
+              <span className="shrink-0 rounded-full border border-rose-400/30 px-2 py-1 text-xs font-semibold tabular-nums text-rose-200">
+                {lancaRecord?.marks ?? 0}/3 marcas
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2" aria-label={`${lancaRecord?.marks ?? 0} de 3 marcas vetoriais`}>
+              {[1, 2, 3].map((limiar) => {
+                const ativo = (lancaRecord?.marks ?? 0) >= limiar;
+                const labels = ['+2 no ataque', 'Ignora 3 Defesa · Fratura', 'Crítico 18–20'];
+                return (
+                  <div key={limiar} className={cn('min-w-0 rounded-lg border px-2 py-2', ativo ? 'border-rose-400/50 bg-rose-500/10 text-rose-100' : 'border-border bg-background/50 text-muted-foreground')}>
+                    <div className="flex items-center gap-1.5 text-xs font-bold"><span className={cn('grid h-5 w-5 place-items-center rounded-full border tabular-nums', ativo ? 'border-rose-300 bg-rose-400/20' : 'border-border')}>{limiar}</span>Marca</div>
+                    <p className="mt-1 text-xs leading-snug">{labels[limiar - 1]}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {lancaRecord?.marks
+                ? `Alvo marcado: ${characters.find((character) => character.id === lancaRecord.targetId)?.name ?? 'alvo atual'}. `
+                : 'Nenhum alvo marcado. '}
+              Fratura Energética: {lancaFractureAvailable ? 'disponível no próximo acerto elegível' : 'usada; renova no próximo turno do portador'}.
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={!!lancaAdvanceBlock || lancaActionLockRef.current}
+                onClick={() => void executarAvancoEscarlate()}
+                title={lancaAdvanceBlock ?? 'Confirma o Avanço; Ação Comum e 4 PE são gastos antes do deslocamento.'}
+                className="min-h-11 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-left text-sm font-semibold text-rose-100 transition-colors hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="block">Avanço Escarlate</span>
+                <span className="block text-xs font-normal text-rose-100/70">Ação Comum · 4 PE · até 3 m</span>
+              </button>
+              <button
+                type="button"
+                disabled={!!lancaSentenceBlock || lancaActionLockRef.current}
+                onClick={() => void executarSentencaRubra()}
+                title={lancaSentenceBlock ?? 'Confirma a Sentença Rubra; Ação Comum e 10 PE são gastos antes do ataque.'}
+                className="min-h-11 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-left text-sm font-semibold text-amber-100 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="block">Sentença Rubra</span>
+                <span className="block text-xs font-normal text-amber-100/70">Ação Comum · 10 PE · exige 3 marcas</span>
+              </button>
+            </div>
+
+            {lancaAdvanceReady && (
+              <div className="flex flex-col gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-emerald-100/80" aria-live="polite">
+                  {opportunityPending ? 'Resolva o Ataque de Oportunidade pendente antes de atacar.' : 'Movimento confirmado. Confira o alcance final e role o ataque.'}
+                </p>
+                <button
+                  type="button"
+                  disabled={!!opportunityPending || !!rangeBlockReason || phase === 'rolling-hit' || phase === 'rolling-dmg' || phase === 'await-dmg'}
+                  onClick={confirmarAtaqueAvanco}
+                  title={opportunityPending ? 'Resolva o Ataque de Oportunidade primeiro.' : rangeBlockReason ?? 'Rola o ataque do Avanço Escarlate.'}
+                  className="min-h-10 shrink-0 rounded-md bg-emerald-500/20 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >Rolar ataque do Avanço</button>
+              </div>
+            )}
+            {lancaAdvanceInterrupted && (
+              <p className="rounded-lg border border-amber-400/30 bg-amber-500/5 p-2 text-xs text-amber-100" role="status">
+                Avanço interrompido antes do d20. A Ação Comum e os 4 PE continuam gastos.
+              </p>
+            )}
+            {lancaSuppressedTarget && (
+              <p className="rounded-lg border border-rose-400/30 bg-rose-500/5 p-2 text-xs text-rose-100" role="status">
+                As Reações deste alvo estão suprimidas; o saldo de Reações não foi consumido.
+              </p>
+            )}
+          </section>
+        )}
 
         {/* ─── EMPUNHADURA ─────────────────────────────────────────────── */}
         <div className="rounded-lg border border-border bg-background/40 p-2 space-y-2">
@@ -1922,13 +2341,14 @@ export function AttackPanel({ character: cProp }: Props) {
           {lastResult
             && (phase === 'await-dmg' || phase === 'done')
             && !lastResult.criticalFail
+            && !(isLancaWeapon && lastResult.hit && phase === 'done')
             && (c.luckCurrent ?? 0) > 0
             && c.luckMax != null && (
             <button
               type="button"
               onClick={handleLuckRerollAttack}
               className="inline-flex items-center gap-1 rounded-md border border-emerald-400/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20 animate-fade-in"
-              title="Gastar 1 ponto de Sorte para re-rolar o d20 do ataque e ficar com o MAIOR resultado. Pode repetir enquanto houver pontos. Indisponível em falha crítica."
+              title={isLancaWeapon && lastResult.hit && phase === 'done' ? 'O dano da Lança já foi aplicado.' : 'Gastar 1 ponto de Sorte para re-rolar o d20 do ataque e ficar com o MAIOR resultado. Pode repetir enquanto houver pontos. Indisponível em falha crítica.'}
             >
               <Sparkles className="h-3.5 w-3.5" /> 🍀 Sorte: re-rolar d20 ({c.luckCurrent}/{c.luckMax})
             </button>

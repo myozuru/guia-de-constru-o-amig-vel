@@ -26,6 +26,12 @@
       "arquivo": "/omni-presets/armas.json"
     },
     {
+      "id": "lanca-vetorial-rubra",
+      "nome": "Lança Vetorial Rubra",
+      "descricao": "Ferramenta Amaldiçoada de 1º Grau, pronta para importar como arma externa no OMNI e entregar a uma ficha.",
+      "arquivo": "/omni-presets/lanca-vetorial-rubra.json"
+    },
+    {
       "id": "seis-olhos",
       "nome": "Seis Olhos (Gojo)",
       "descricao": "Passiva completa do Seis Olhos: imunidade a Cego/Desprevenido, redução de custo de PE escalável (vendado = metade do ER, descoberto = ER inteiro), Ler Técnica ação bônus → livre 1×/rodada quando descoberto, fadiga em combate (4 = 1 exaustão) e zeragem em descansos. Use o slot Venda da ficha para alternar.",

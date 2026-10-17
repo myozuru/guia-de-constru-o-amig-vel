@@ -25,6 +25,7 @@ import { useCharacterStore } from './useCharacterStore';
 import { ladoIniciativaPorFicha } from '@/lib/mapa/ladoIniciativa';
 import { useReactionStore } from './useReactionStore';
 import type { InstanciaInvocacao, LimiteResetEconomiaInvocacao } from '@/lib/invocacoes/schema';
+import type { LancaCombatRecord } from '@/lib/lancaVetorial';
 import { consumoPorTempoDecorrido, reservaTempoAtivaNoCombate } from '@/lib/controlador/tempo';
 import { processarResetEconomiaInstancia } from '@/lib/controlador/economiaAcoes';
 
@@ -237,6 +238,14 @@ interface CombatStore {
   movementUsedByChar: Record<string, number>;
   /** Ação de movimento gasta neste turno, separada do orçamento de metros. */
   movementActionUsedByChar: Record<string, boolean>;
+  /** Estado mecânico por portador e cópia da Lança Vetorial Rubra. */
+  lancaVetorial: Record<string, LancaCombatRecord>;
+  setLancaRecord: (key: string, record: LancaCombatRecord) => void;
+  refreshLancaForWielder: (wielderId: string) => void;
+  /** Avanço confirmado, aguardando confirmação do movimento ou do ataque. */
+  pendingLancaAdvance: null | { id: string; wielderId: string; targetId: string; status: 'movement' | 'ready' | 'interrupted' };
+  setPendingLancaAdvance: (value: CombatStore['pendingLancaAdvance']) => void;
+  resolveLancaAdvanceMovement: (id: string, status: 'ready' | 'interrupted') => void;
   /** Cronômetro de turno (definido pelo Mestre). */
   turnTimerEnabled: boolean;
   /** Duração padrão do turno em segundos. 0 = sem cronômetro. */
@@ -298,6 +307,29 @@ interface CombatStore {
 
 function activeTurnOwner(state: Pick<CombatStore, 'initiativeOrder' | 'currentTurnIndex'>): string | null {
   return state.initiativeOrder[state.currentTurnIndex]?.charId ?? null;
+}
+
+function iniciarTurnoLanca(charId: string): void {
+  useCombatStore.getState().refreshLancaForWielder(charId);
+  const store = useCharacterStore.getState();
+  for (const character of store.characters) {
+    const conditions = character.activeConditions ?? [];
+    const remaining = conditions.filter((condition) =>
+      !(condition.conditionId === 'lanca-vetorial-sem-reacoes' && condition.sourceCharId === charId),
+    );
+    if (remaining.length !== conditions.length) store.updateCharacter(character.id, { activeConditions: remaining });
+  }
+  const pending = useCombatStore.getState().pendingLancaAdvance;
+  if (pending?.wielderId === charId) useCombatStore.getState().setPendingLancaAdvance(null);
+}
+
+function limparSupressoesLanca(): void {
+  const store = useCharacterStore.getState();
+  for (const character of store.characters) {
+    const conditions = character.activeConditions ?? [];
+    const remaining = conditions.filter((condition) => condition.conditionId !== 'lanca-vetorial-sem-reacoes');
+    if (remaining.length !== conditions.length) store.updateCharacter(character.id, { activeConditions: remaining });
+  }
 }
 
 export function migrarEstadoCombatPersistido(persistedState: unknown, version: number): unknown {
@@ -458,6 +490,23 @@ export const useCombatStore = create<CombatStore>()(
       participantIds: [],
       movementUsedByChar: {},
       movementActionUsedByChar: {},
+      lancaVetorial: {},
+      setLancaRecord: (key, record) => set((s) => ({ lancaVetorial: { ...s.lancaVetorial, [key]: record } })),
+      refreshLancaForWielder: (wielderId) => set((s) => {
+        let changed = false;
+        const lancaVetorial = { ...s.lancaVetorial };
+        for (const [key, record] of Object.entries(lancaVetorial)) {
+          if (record.wielderId !== wielderId || record.fractureAvailable) continue;
+          lancaVetorial[key] = { ...record, fractureAvailable: true };
+          changed = true;
+        }
+        return changed ? { lancaVetorial } : {};
+      }),
+      pendingLancaAdvance: null,
+      setPendingLancaAdvance: (value) => set({ pendingLancaAdvance: value }),
+      resolveLancaAdvanceMovement: (id, status) => set((s) =>
+        s.pendingLancaAdvance?.id === id ? { pendingLancaAdvance: { ...s.pendingLancaAdvance, status } } : {},
+      ),
       turnTimerEnabled: false,
       turnDurationSec: 60,
       turnRemainingAtStart: 60,
@@ -716,6 +765,8 @@ export const useCombatStore = create<CombatStore>()(
           initiativeOrder: sorted,
           movementUsedByChar: {},
           movementActionUsedByChar: {},
+          lancaVetorial: {},
+          pendingLancaAdvance: null,
           turnClockOwnerCharId: firstOwnerCharId,
           turnBaseRemainingAtStart: s.turnDurationSec,
           turnRemainingAtStart: s.turnDurationSec + totalReservasTempoDoDono(firstOwnerCharId, combatId),
@@ -911,6 +962,7 @@ export const useCombatStore = create<CombatStore>()(
           import('@/stores/useMapStore').then(({ useMapStore }) => useMapStore.getState().setPendingMove(null));
           const firstEntry = us.ordem[0];
           if (firstEntry) {
+            iniciarTurnoLanca(firstEntry.charId);
             charStore.updateCharacter(firstEntry.charId, { weaponSwapsThisTurn: 0, attacksThisTurn: 0, lastAttackHit: undefined, mobilidadeReacaoM: 0, mobilidadeReacaoBase: 0, arteGolpeDescendente: null });
             // Assumir Postura: termina após 1 minuto (10 rodadas).
             for (const ch of charStore.characters) {
@@ -1010,6 +1062,7 @@ export const useCombatStore = create<CombatStore>()(
         }
         const nextEntry = initiativeOrder[nextIndex];
         if (nextEntry) {
+          iniciarTurnoLanca(nextEntry.charId);
           useCharacterStore.getState().updateCharacter(nextEntry.charId, { weaponSwapsThisTurn: 0, attacksThisTurn: 0, lastAttackHit: undefined, mobilidadeReacaoM: 0, mobilidadeReacaoBase: 0, arteGolpeDescendente: null });
           // Fase 2 — Reaplica pool dedicado de Aptidões (Mestre das Aptidões).
           useCharacterStore.getState().applyTurnStartSpecHooks(nextEntry.charId);
@@ -1047,6 +1100,7 @@ export const useCombatStore = create<CombatStore>()(
           expirarEfeitosSuporteInvocacoes(round, true);
         });
         const participants = initiativeOrder.map((e) => e.charId);
+        limparSupressoesLanca();
         encerrarReservasDoCombate(combatId, Date.now());
         // Limpa todos os AdO ao fim do combate.
         import('@/stores/useOpportunityStore').then(({ useOpportunityStore }) =>
@@ -1102,6 +1156,8 @@ export const useCombatStore = create<CombatStore>()(
           turnTimeGrantEventIds: [],
           turnRemainingAtStart: s.turnDurationSec,
           turnStartedAt: Date.now(),
+          lancaVetorial: {},
+          pendingLancaAdvance: null,
         }));
       },
     }),
@@ -1126,6 +1182,8 @@ export const useCombatStore = create<CombatStore>()(
         turnStartedAt: s.turnStartedAt,
         turnPaused: s.turnPaused,
         freeformMode: s.freeformMode,
+        lancaVetorial: s.lancaVetorial,
+        pendingLancaAdvance: s.pendingLancaAdvance,
       }),
     },
   ),

@@ -97,7 +97,7 @@ import { applyOriginEffects } from '@/lib/originEngine';
 import { getTrainingBonusByLevel, getHitDiceMax, MAX_LEVEL, getKeyAttrForSpec } from '@/lib/levelEngine';
 import { aggregateTalentBonuses } from '@/lib/talentEffects';
 import { aggregateAuraEffects, getPendingAbsorbedDice, hasKokusen, getKokusenCritThreshold } from '@/lib/auraEffects';
-import { aggregateConditionMods, getDefenseModFromConditions, getSkillModFromConditions, getAutoCritFromConditions } from '@/lib/conditionEffects';
+import { aggregateConditionMods, getDefenseModFromConditions, getSkillModFromConditions, getAutoCritFromConditions, hasLancaReactionSuppression } from '@/lib/conditionEffects';
 import { useCombatStore } from '@/stores/useCombatStore';
 import { useProfileStore } from '@/stores/useProfileStore';
 import { notifyMissedRangedAttack } from '@/stores/useReactionStore';
@@ -2115,9 +2115,10 @@ export function CharacterCard({ character: c, hideAttackPanel, compactHeader = f
           <button
             onClick={(e) => { e.stopPropagation(); useReactionStore.getState().consumeReaction(c.id); }}
             className={cn('rounded px-1.5 py-0.5 text-xs font-bold border transition-colors', getReactionsAvailable(c) > 0 ? 'bg-neon-yellow/20 text-neon-yellow border-neon-yellow/40' : 'bg-secondary/30 text-muted-foreground/50 border-border')}
-            title="Reação"
+            title={hasLancaReactionSuppression(c) ? 'Reações suprimidas pela Sentença Rubra; o saldo continua preservado.' : 'Reação'}
+            aria-label={hasLancaReactionSuppression(c) ? 'Reações suprimidas; saldo não consumido' : 'Reação'}
           >
-            RÇ {getReactionsAvailable(c)}/{c.reactionsMax + itemBonuses.reactions}
+            {hasLancaReactionSuppression(c) ? 'RÇ SUPRIMIDA' : `RÇ ${getReactionsAvailable(c)}/${c.reactionsMax + itemBonuses.reactions}`}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); if (c.opportunityCurrent > 0) updateCharacter(c.id, { opportunityCurrent: c.opportunityCurrent - 1 }); }}

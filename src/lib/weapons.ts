@@ -22,6 +22,8 @@ export type WeaponPropertyKind =
   | 'fineza' | 'leve' | 'marcial' | 'modular' | 'mortal' | 'oscilante'
   | 'pesada' | 'recarga' | 'versatil';
 
+export type WeaponSpecialFeatureId = 'lanca-vetorial-rubra';
+
 export interface WeaponProperty {
   kind: WeaponPropertyKind;
   /** Pesada [X] ⇒ value = X (Força mínima). Recarga [X] ⇒ value = X. */
@@ -61,10 +63,13 @@ export interface Weapon {
   rangeLong?: number;
 
   spaces: number;
-  cost: number;
+  /** Ausente quando o preço/custo de catálogo não foi definido. */
+  cost?: number;
 
   /** Texto da propriedade especial (livro p. 136-137). */
   specialText?: string;
+  /** Identificador estável de uma mecânica exclusiva executada pela ficha. */
+  specialFeatureId?: WeaponSpecialFeatureId;
 }
 
 // ===== Helpers de construção (mais legíveis no dataset) ====================
@@ -311,6 +316,28 @@ export const ALL_WEAPONS: Weapon[] = [
   ...SIMPLE_MELEE, ...SIMPLE_RANGED, ...SIMPLE_THROWN,
   ...COMPLEX_MELEE, ...COMPLEX_RANGED, ...COMPLEX_THROWN,
 ];
+
+export const EXTERNAL_WEAPONS: Weapon[] = [
+  {
+    id: 'lanca-vetorial-rubra',
+    name: 'Lança Vetorial Rubra',
+    category: 'complexa',
+    range: 'melee',
+    group: 'Haste',
+    damage: '1d10',
+    damageType: 'Pf',
+    critRange: 19,
+    properties: [P.estendida(), P.duasMaos(), P.especial()],
+    spaces: 3,
+    specialFeatureId: 'lanca-vetorial-rubra',
+    specialText: 'Ferramenta Amaldi\u00e7oada - Grau 1 - Raridade \u00c9pico. N\u00facleo Carmesim: cada acerto aplica 1 Marca Vetorial (m\u00e1ximo 3); acertos cr\u00edticos aplicam 2. Somente um inimigo pode estar marcado por vez. Com 1 marca, o portador recebe +2 nos ataques contra o alvo. Com 2, os ataques ignoram 3 pontos de Defesa e causam +2d8 de dano uma vez por rodada. Com 3, a margem de cr\u00edtico passa a 18\u201320 contra o alvo. Avan\u00e7o Escarlate (A\u00e7\u00e3o Comum, 4 PE): avance em linha reta at\u00e9 3 m e ataque; no acerto, causa o dano normal e aplica exatamente 2 marcas, inclusive em cr\u00edtico. Senten\u00e7a Rubra (A\u00e7\u00e3o Comum, 10 PE; exige 3 marcas): no acerto, causa o dano-base +10d8 Perfurante, impede Rea\u00e7\u00f5es do alvo at\u00e9 o in\u00edcio do pr\u00f3ximo turno do portador e consome as marcas. Em cr\u00edtico, dobra os dados-base e os 10d8, sem dobrar modificadores fixos. Senten\u00e7a Rubra n\u00e3o recebe o +2d8 de Fratura Energ\u00e9tica. As marcas desaparecem ao fim do combate.',
+  },
+];
+
+export function findWeaponModelById(id: string | null | undefined): Weapon | undefined {
+  if (!id) return undefined;
+  return ALL_WEAPONS.find((w) => w.id === id) ?? EXTERNAL_WEAPONS.find((w) => w.id === id);
+}
 
 export function getWeaponById(id: string): Weapon | undefined {
   return ALL_WEAPONS.find(w => w.id === id);

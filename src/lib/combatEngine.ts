@@ -98,6 +98,11 @@ export interface AttackSituation {
   /** Precisão Definitiva: PE gastos e destino do bônus. */
   precisaoPe?: number;
   precisaoModo?: 'acerto' | 'dano';
+  /** Crítico forçado por uma condição já resolvida antes dos dados do golpe. */
+  forceCritical?: boolean;
+  autoCriticalReason?: string;
+  /** Sentença Rubra aplica a supressão antes das janelas de reação ao acerto. */
+  lancaSentenceSuppression?: { sourceCharId: string; sourceCharName: string; sourceInstanceId: string };
 }
 
 
@@ -134,6 +139,8 @@ export interface AttackResult {
   attackTotal: number;
   hit: boolean;
   critical: boolean;
+  /** Menor d20 natural que gera crítico após todos os bônus situacionais. */
+  criticalThreshold?: number;
   criticalFail: boolean;
   /** Arma de fogo emperrou nesta jogada (precisa de Ação Comum para soltar). */
   emperrou?: boolean;
@@ -141,6 +148,10 @@ export interface AttackResult {
   damageDice: string;
   damageRolls: number[];
   damageTotal: number;
+  /** Bônus fixos de dano que não fazem parte da fórmula de dados. */
+  damageFlatBonus?: number;
+  /** O ataque foi rerrolado e precisa de uma nova rolagem de dano. */
+  damageNeedsReroll?: boolean;
   damageType: string | null;
   /** Modificadores aplicados (origem → valor) para auditoria. */
   modifiers: { source: string; value: number }[];
@@ -501,7 +512,7 @@ export async function rollAttack(ctx: AttackContext): Promise<AttackResult> {
   const criticalFail = natural === 1 && !consumeCritNegated(ctx.attacker.id);
   // Emperrar: 1 natural (regra base) ou até 3 com Pistoleiro Iniciado declarado.
   const jammed = emperrouArma(natural, w, pistoleiroOn);
-  const critical = !jammed && natural >= critRange;
+  const critical = !jammed && !criticalFail && (natural >= critRange || !!ctx.situation.forceCritical);
 
 
   // Modificadores
@@ -577,6 +588,9 @@ export async function rollAttack(ctx: AttackContext): Promise<AttackResult> {
 
   const notes = [...ctxBonus.notes];
   if (execucaoD6 > 0) notes.push(`Execução Silenciosa: +${execucaoD6}d6 de dano (alvo Desprevenido)`);
+  if (ctx.situation.forceCritical && natural < critRange && ctx.situation.autoCriticalReason) {
+    notes.push(`🎯 Auto-acerto crítico: alvo ${ctx.situation.autoCriticalReason}`);
+  }
   if (critical) notes.push(`💥 Crítico (≥${critRange})`);
   if (criticalFail) {
     notes.push('💀 Falha crítica (1 nat)');
@@ -586,17 +600,33 @@ export async function rollAttack(ctx: AttackContext): Promise<AttackResult> {
   }
   if (jammed) notes.push(`🔧 ${w.name} EMPERROU (d20 ${natural} ≤ margem ${margemEmperrar(w, pistoleiroOn)}) — ação comum para desemperrar.`);
 
+  if (hit && ctx.targetId && ctx.situation.lancaSentenceSuppression) {
+    const effect = ctx.situation.lancaSentenceSuppression;
+    useCharacterStore.getState().addCondition(ctx.targetId, {
+      id: `lanca-vetorial-sem-reacoes:${effect.sourceCharId}:${effect.sourceInstanceId}`,
+      conditionId: 'lanca-vetorial-sem-reacoes',
+      name: 'Reações suprimidas',
+      icon: '⛔',
+      remainingTurns: -1,
+      remainingRounds: -1,
+      sourceCharId: effect.sourceCharId,
+      sourceCharName: effect.sourceCharName,
+      sourceEntityId: 'lanca-vetorial-rubra',
+      sourceInstanceId: effect.sourceInstanceId,
+    });
+  }
   if (!hit && ctx.targetId && !ctx.ignorarReacoes) await abrirJanelaReacaoAtiva({ gatilho: 'quando_ataque_errar', origemId: ctx.attacker.id, protegidoId: ctx.targetId });
   if (hit && ctx.targetId && !ctx.ignorarReacoes) {
     await abrirJanelaReacaoAtiva({ gatilho: 'quando_ataque_acertar', origemId: ctx.attacker.id, protegidoId: ctx.targetId });
     if (critical) await abrirJanelaReacaoAtiva({ gatilho: 'quando_sofrer_critico', origemId: ctx.attacker.id, protegidoId: ctx.targetId });
   }
   return {
-    semRecursao: !!ctx.semRecursao, d20: natural, attackRolls, rollMode, natural, attackTotal, hit, critical, criticalFail,
+    semRecursao: !!ctx.semRecursao, d20: natural, attackRolls, rollMode, natural, attackTotal, hit, critical, criticalThreshold: critRange, criticalFail,
     emperrou: jammed,
 
     damageDice: `${formatDamage(finalDice)}${fixoArma ? `${fixoArma > 0 ? '+' : ''}${fixoArma}` : ''}`,
     damageRolls, damageTotal,
+    damageFlatBonus: (posturaAtaque(ctx.attacker).semAtributo ? 0 : ctx.abilityMod) + ctxBonus.damageFlat,
     damageType: w.omniDamageType ?? w.damageType,
     modifiers: mods, notes,
     canRerollDamage:
