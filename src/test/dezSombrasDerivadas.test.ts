@@ -4,7 +4,7 @@ import { criarFormasDerivadasDezSombras } from '@/lib/controlador/dezSombrasDeri
 describe('Dez Sombras: formas derivadas importadas separadamente', () => {
   const forms = criarFormasDerivadasDezSombras('feiticeira');
 
-  it('cria apenas Abismo e Agito como formas derivadas bloqueadas, sem preencher a décima vaga-base', () => {
+  it('cria apenas Abismo e Agito como formas derivadas, sem preencher a décima vaga-base', () => {
     expect(forms.map(form => form.subcategoria)).toEqual([
       'dez-sombras:abismo-desconhecido-do-poco',
       'dez-sombras:agito',
@@ -15,7 +15,7 @@ describe('Dez Sombras: formas derivadas importadas separadamente', () => {
     expect(forms[1].referenciaRegra).toContain('pp. 64, 68');
   });
 
-  it('preserva perfil e incertezas publicadas do Abismo, com porte provisório', () => {
+  it('preserva o perfil publicado do Abismo e marca como parcial apenas Segurar com contagem do Mestre', () => {
     const abismo = forms[0];
     expect(abismo).toMatchObject({
       grau: 'quarto',
@@ -30,10 +30,20 @@ describe('Dez Sombras: formas derivadas importadas separadamente', () => {
     });
     expect(abismo.lacunasFormaDerivada?.join(' ').toLowerCase()).toContain('porte e atributos');
     expect(abismo.acoes.map(action => action.nome)).toEqual(['Segurar', 'Fora de Risco', 'Alado', 'Grupo (3 sapos)']);
-    expect(abismo.acoes.every(action => action.statusAutomacao === 'manual' && action.tipoExecucao === 'manual')).toBe(true);
+    expect(abismo.acoes[0]).toMatchObject({
+      statusAutomacao: 'parcial',
+      tipoExecucao: 'manual',
+      categoriaAcao: 'acao_simples',
+      alcanceM: 9,
+    });
+    expect(abismo.acoes.slice(1).every(action =>
+      action.statusAutomacao === 'manual' && action.tipoExecucao === 'manual',
+    )).toBe(true);
+    expect(abismo.acoes[0].descricaoRegra).toContain('+7 com dois');
+    expect(abismo.acoes[0].descricaoRegra).toContain('Não inferir a contagem pelos PV.');
   });
 
-  it('preserva o perfil de Agito e mantém todas as ações incompletas manuais', () => {
+  it('preserva Agito executável apenas onde a ficha publica os parâmetros necessários', () => {
     const agito = forms[1];
     expect(agito).toMatchObject({
       grau: 'segundo',
@@ -55,8 +65,30 @@ describe('Dez Sombras: formas derivadas importadas separadamente', () => {
       'Cura Concentrada',
       'Regeneração Superior',
     ]);
-    expect(agito.acoes[0]).toMatchObject({ teste: 'ataque', bonusAtaque: 11, dano: '5d10+6', tipoDano: 'DCC' });
-    expect(agito.acoes[1].formulaCura).toBe('5d10+3');
-    expect(agito.acoes.every(action => action.statusAutomacao === 'manual' && action.tipoExecucao === 'manual')).toBe(true);
+    expect(agito.acoes[0]).toMatchObject({
+      teste: 'ataque',
+      bonusAtaque: 11,
+      dano: '5d10+6',
+      tipoDano: 'DCC',
+      statusAutomacao: 'executavel',
+    });
+    expect(agito.acoes[1]).toMatchObject({
+      tipo: 'suporte',
+      categoriaAcao: 'acao_complexa',
+      alcanceM: 4.5,
+      formulaCura: '5d10+3',
+      efeitoSuporte: { alvos: 'unico' },
+      statusAutomacao: 'manual',
+      tipoExecucao: 'manual',
+    });
+    expect(agito.acoes[1].descricaoRegra).toContain('custo');
+    expect(agito.acoes[2]).toMatchObject({
+      categoriaAcao: 'reacao',
+      statusAutomacao: 'manual',
+      tipoExecucao: 'manual',
+    });
+    expect(agito.acoes[2].descricaoRegra).toContain('Ao receber dano');
+    expect(agito.acoes[2].descricaoRegra).toContain('5d10+3');
+    expect(agito.acoes[2].descricaoRegra).toContain('múltiplas instâncias de dano');
   });
 });

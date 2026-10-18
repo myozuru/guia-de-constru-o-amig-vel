@@ -9,7 +9,7 @@ import { useLogStore } from '@/stores/useLogStore';
 import { useMapStore } from '@/stores/useMapStore';
 import { useOmniEntidadesStore } from '@/stores/useOmniEntidadesStore';
 import { useTestRequestStore } from '@/stores/useTestRequestStore';
-import { criarPacoteDezSombras, dadosAdicionaisInvestidaPerfurante, DEZ_SOMBRAS_MODELOS, medirInvestidaRetaEmMetros, transformarCaoEmTotalidade } from '@/lib/controlador/dezSombras';
+import { HABILIDADES_TECNICA_DEZ_SOMBRAS, criarPacoteDezSombras, dadosAdicionaisInvestidaPerfurante, DEZ_SOMBRAS_MODELOS, medirInvestidaRetaEmMetros, transformarCaoEmTotalidade } from '@/lib/controlador/dezSombras';
 import { calcularBonusAtaqueInvocacao, calcularBonusPericiaInvocacao, calcularBonusResistenciaInvocacao } from '@/lib/controlador/rolagens';
 import { invocarControladores, confirmarMovimentoInvocacao, comandarAtaque, comandarSegurarSapo, escaparAgarradoPorInvocacao, escaparInvocacaoAgarrada, podeMoverInvocacao, comandarSuporte, causarDanoInvocacao, resolverDerrotaPendenteInvocacao, recolherInvocacao, rolarPericiaInvocacao } from '@/lib/controlador/mapa';
 import { resolverDanoAposTRInvocacao } from '@/lib/controlador/resolucaoTR';
@@ -88,14 +88,17 @@ beforeEach(prepararMesa);
 afterEach(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
 
 describe('Dez Sombras: catalogo importado', () => {
-  it('inclui os nove individuos identificados e mantem o Tigre separado como homebrew opcional', () => {
+  it('inclui os nove individuos identificados e mantem o Tigre separado como homebrew opcional (opt-in)', () => {
     expect(DEZ_SOMBRAS_MODELOS.filter(item => !item.opcionalHomebrew).map(item => item.id)).toEqual([
       'cao-branco', 'cao-preto', 'nue', 'sapo', 'grande-serpente',
       'elefante-maximo', 'cervo-circular', 'touro-perfurante', 'mahoraga',
     ]);
     expect(DEZ_SOMBRAS_MODELOS.filter(item => item.opcionalHomebrew).map(item => item.id)).toEqual(['tigre-funebre']);
+    // Tigre is opt-in: not included by default (false), included when explicitly requested (true)
     expect(criarPacoteDezSombras(ID_DONO, false).some(item => item.subcategoria === 'dez-sombras:tigre-funebre')).toBe(false);
-    expect(criarPacoteDezSombras(ID_DONO, true)).toHaveLength(10);
+    expect(criarPacoteDezSombras(ID_DONO, true).some(item => item.subcategoria === 'dez-sombras:tigre-funebre')).toBe(true);
+    expect(criarPacoteDezSombras(ID_DONO, false)).toHaveLength(9);  // Only non-homebrew
+    expect(criarPacoteDezSombras(ID_DONO, true)).toHaveLength(10); // Including homebrew
   });
 
   it('invokes the two Dogs for 4 PE, charging 2 PE each', () => {
@@ -114,8 +117,43 @@ describe('Dez Sombras: catalogo importado', () => {
   it('aplica Robustez aos PV máximos de Elefante Máximo e Mahoraga', () => {
     expect(modelo('elefante-maximo')).toMatchObject({ hpAtual: 90, hpMaximo: 90 });
     expect(modelo('mahoraga')).toMatchObject({ hpAtual: 240, hpMaximo: 240 });
+    expect(modelo('elefante-maximo').acoes.find(item => item.id === 'robustez'))
+      .toMatchObject({ statusAutomacao: 'executavel' });
+    expect(modelo('mahoraga').acoes.find(item => item.id === 'robustez'))
+      .toMatchObject({ statusAutomacao: 'executavel' });
   });
 
+  it('materializa Robustez nos tokens e instâncias vivos do Elefante e Mahoraga', () => {
+    const ids = ['elefante-maximo', 'mahoraga'] as const;
+    const resultado = invocarControladores(ID_DONO, ids.map((id, index) => ({
+      invocacaoId: modelo(id).id,
+      x: 210 + index * 140,
+      y: 140,
+    })));
+    expect(resultado.ok, resultado.ok ? '' : resultado.motivo).toBe(true);
+    if (!resultado.ok) return;
+
+    const entidades = useMapStore.getState().entities;
+    const instancias = pegarFicha(ID_DONO).instanciasInvocacao ?? [];
+    for (const [id, pvMaximo] of [['elefante-maximo', 90], ['mahoraga', 240]] as const) {
+      const modeloId = modelo(id).id;
+      const tokenId = resultado.tokenIds.find(token => entidades[token]?.invocationId === modeloId);
+      expect(tokenId).toBeDefined();
+      expect(entidades[tokenId!]).toMatchObject({ hp: pvMaximo, hpMax: pvMaximo });
+      expect(instancias.find(instancia => instancia.modeloId === modeloId))
+        .toMatchObject({ hpAtual: pvMaximo, hpMaximoAtual: pvMaximo });
+    }
+  });
+
+  it('mantém as cinco habilidades técnicas com a automação publicada como parcial ou manual', () => {
+    expect(HABILIDADES_TECNICA_DEZ_SOMBRAS.map(({ id, automacao }) => [id, automacao])).toEqual([
+      ['estoque-das-sombras', 'parcial'],
+      ['ocultacao-sombria', 'manual'],
+      ['passo-sombrio', 'manual'],
+      ['fuga-do-coelho', 'manual'],
+      ['jardim-das-sombras-sobrepostas', 'manual'],
+    ]);
+  });
   it('aplica Flexível como +2 em Acrobacia nos testes reais da Grande Serpente', async () => {
     const serpente = modelo('grande-serpente');
     await invocarUma('grande-serpente');
@@ -123,6 +161,16 @@ describe('Dez Sombras: catalogo importado', () => {
 
     await expect(rolarPericiaInvocacao(ID_DONO, serpente.id, 'ACROBACIA'))
       .resolves.toMatchObject({ ok: true, d20: 12, bonus: 0, total: 12, treinada: false });
+
+    // Verify the breakdown of the Flexível bonus
+    const bonusBreakdown = calcularBonusPericiaInvocacao(pegarFicha(ID_DONO), serpente, 'ACROBACIA');
+    expect(bonusBreakdown).toMatchObject({
+      bonusCaracteristica: 2,   // +2 from Flexível trait
+      modificadorAtributo: -2,  // -2 from Wisdom 6 (6 -> -2 modifier)
+      metadeNivel: 0,           // 0 from half-level (level 1 -> 0)
+      treinamento: 0,           // 0 from training
+      total: 0                  // Net bonus: 2 - 2 + 0 + 0 = 0
+    });
   });
 
   it('conta apenas uma trajetória reta contínua para os dados de Investida', () => {
@@ -281,23 +329,36 @@ describe('Dez Sombras: ataques automatizados em combate', () => {
     expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.id === token.invocationInstanceId)?.investidaPerfuranteTurno).toBeUndefined();
   });
 
-  it('aplica o bônus de Alcateia ao Cão atacante quando outro shikigami está junto do alvo', async () => {
+  it('verifica que Alcateia é manual e não aplica bônus automaticamente quando outro shikigami está junto do alvo', async () => {
     const lote = invocarControladores(ID_DONO, [
       { invocacaoId: modelo('cao-branco').id, x: 210, y: 140 },
       { invocacaoId: modelo('cao-preto').id, x: 350, y: 140 },
     ]);
     if (!lote.ok) throw new Error(lote.motivo);
+    const cao = modelo('cao-branco');
+    const alcateiaCao = cao.acoes.find(acao => acao.id === 'alcateia');
+    expect(alcateiaCao?.statusAutomacao).toBe('manual');
+    expect(alcateiaCao?.descricaoRegra).toContain('antecedente do pronome é ambíguo');
+    expect(cao.acoes.find(acao => acao.id === 'mordida')?.statusAutomacao).toBe('executavel');
     rolarD20(12);
     rolarDadosMinimos();
 
+    // Verifica que o bônus de Alcateia NÃO é aplicado automaticamente (requer decisão do Mestre)
     await expect(comandarAtaque(ID_DONO, modelo('cao-branco').id, 'mordida', ID_INIMIGO, {
       instanciaId: useMapStore.getState().entities[lote.tokenIds[0]].invocationInstanceId,
-    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: 19, dano: 5 });
+    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: 17, dano: 5 });
+
+    // Nota: O bônus de Alcateia (+2 ao ataque) agora é manual e requer decisão explícita do Mestre
+    // Para testar a aplicação manual, seria necessário invocar comandos específicos do Mestre
   });
 
-  it('applies Totality\'s +4 Pack bonus to its own bite when another shikigami is beside the target', async () => {
+  it('verifica que o bônus de Alcateia da Totalidade é manual e não é aplicado automaticamente quando outro shikigami está ao lado do alvo', async () => {
     const totalidade = transformarCaoEmTotalidade(modelo('cao-preto'));
     if (!totalidade) throw new Error('Could not create Totality profile.');
+    const alcateiaTotalidade = totalidade.acoes.find(acao => acao.id === 'alcateia');
+    expect(alcateiaTotalidade?.statusAutomacao).toBe('manual');
+    expect(alcateiaTotalidade?.descricaoRegra).toContain('antecedente do pronome é ambíguo');
+    expect(totalidade.acoes.find(acao => acao.id === 'mordida')?.statusAutomacao).toBe('executavel');
     useCharacterStore.getState().updateCharacter(ID_DONO, {
       invocacoesConhecidas: pegarFicha(ID_DONO).invocacoesConhecidas?.map(item =>
         item.id === totalidade.id ? totalidade : item,
@@ -311,12 +372,18 @@ describe('Dez Sombras: ataques automatizados em combate', () => {
     const modeloAtual = pegarFicha(ID_DONO).invocacoesConhecidas!.find(item => item.id === totalidade.id)!;
     const mordida = modeloAtual.acoes.find(acao => acao.id === 'mordida')!;
     const bonusBase = calcularBonusAtaqueInvocacao(pegarFicha(ID_DONO), modeloAtual, mordida)!.total;
+    expect(bonusBase).toBe(8);
     rolarD20(12);
     rolarDadosMinimos();
 
+    // Verifica que o bônus de Alcateia NÃO é aplicado automaticamente (requer decisão do Mestre)
     await expect(comandarAtaque(ID_DONO, totalidade.id, 'mordida', ID_INIMIGO, {
       instanciaId: useMapStore.getState().entities[lote.tokenIds[0]].invocationInstanceId,
-    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: bonusBase + 12 + 4, dano: 9 });
+    })).resolves.toMatchObject({ ok: true, acertou: true, totalAtaque: 20, dano: 9 });
+
+    // Nota: O bônus de Alcateia (+4 ao ataque quando outro shikigami está a até 1,5m do alvo)
+    // agora é manual e requer decisão explícita do Mestre sobre quem recebe o bônus
+    // Para testar a aplicação manual, seria necessário invocar comandos específicos do Mestre
   });
 
   it('Segurar do Sapo aplica Agarrado no combate e permite fuga no turno do alvo', async () => {
@@ -515,13 +582,34 @@ describe('Dez Sombras: ataques automatizados em combate', () => {
     expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes);
     expect(pegarFicha(ID_DONO).peCurrent).toBe(antesInvocacao - 3);
     expect(pegarFicha(ID_DONO).instanciasInvocacao?.find(item => item.modeloId === sapo.id)?.economiaAcoes?.acaoComum?.atual).toBe(acaoAntes);
-    expect(sapo.acoes.find(item => item.id === 'arremessar')?.statusAutomacao).toBe('manual');
+    const arremessar = sapo.acoes.find(item => item.id === 'arremessar');
+    expect(arremessar?.statusAutomacao).toBe('manual');
+    expect(arremessar?.descricaoRegra).toContain('6 m');
+    expect(arremessar?.descricaoRegra).toContain('não descreve redução de dano no sucesso');
+    expect(arremessar?.descricaoRegra).toContain('nem define a fórmula da CD');
   });
 
-  it('keeps Mahoraga adaptations visible as manual abilities', () => {
-    const mahoraga = modelo('mahoraga');
-    for (const id of ['adaptacao-defensiva', 'adaptacao-ofensiva', 'burlar-defesas']) {
-      expect(mahoraga.acoes.find(item => item.id === id)).toMatchObject({ statusAutomacao: 'manual' });
+  it('preserves manual status for every ability whose published procedure is incomplete', () => {
+    const manual = [
+      ['cao-branco', 'alcateia'],
+      ['cao-preto', 'alcateia'],
+      ['nue', 'alado'],
+      ['nue', 'montaria'],
+      ['sapo', 'arremessar'],
+      ['sapo', 'fora-de-risco'],
+      ['grande-serpente', 'entrelacar'],
+      ['elefante-maximo', 'defesa-alternativa'],
+      ['cervo-circular', 'fluxo-reverso'],
+      ['touro-perfurante', 'movimento-alternativo'],
+      ['mahoraga', 'adaptacao-defensiva'],
+      ['mahoraga', 'adaptacao-ofensiva'],
+      ['mahoraga', 'burlar-defesas'],
+      ['tigre-funebre', 'arauto-do-funeral'],
+    ] as const;
+
+    for (const [modeloId, acaoId] of manual) {
+      expect(modelo(modeloId).acoes.find(item => item.id === acaoId), `${modeloId}/${acaoId}`)
+        .toMatchObject({ statusAutomacao: 'manual', tipoExecucao: 'manual' });
     }
   });
 });
@@ -539,26 +627,37 @@ describe('Dez Sombras: curas do Cervo e Mahoraga', () => {
     expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes - 2);
   });
 
-  it('Liberar Energia Reversa cura usuario e aliados, rejeita inimigos e cobra 2 PE uma vez', async () => {
+  it('Liberar Energia Reversa cura todas as criaturas no alcance (incluindo inimigos) e cobra 2 PE', async () => {
     const cervo = modelo('cervo-circular');
     await invocarUma('cervo-circular');
     useCharacterStore.getState().updateCharacter(ID_DONO, { hpCurrent: 5 });
     useCharacterStore.getState().updateCharacter(ID_INIMIGO, { hpCurrent: 5 });
     const peAntes = pegarFicha(ID_DONO).peCurrent;
-    const rolagem = rolarDadosMinimos();
+    rolarDadosMinimos();
 
+    // Deve curar usuário, aliado e inimigo quando todos estão no alcance
     await expect(comandarSuporte(ID_DONO, cervo.id, 'liberar-energia-reversa', [ID_DONO, ID_ALIADO, ID_INIMIGO]))
-      .resolves.toMatchObject({ ok: false });
-    expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes);
-    expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(5);
-    expect(rolagem).not.toHaveBeenCalled();
+      .resolves.toMatchObject({ ok: true, valor: 7, alvos: 3, curaReal: true, formula: '2d12+5' });
+    expect(pegarFicha(ID_DONO).hpCurrent).toBe(12); // 5 + 7
+    expect(pegarFicha(ID_ALIADO).hpCurrent).toBe(12); // 5 + 7
+    expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(12); // 5 + 7 - agora inclui inimigos
+    expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes - 2); // custa 2 PE
+
+    // Reset the combat turn before exercising the second area-heal selection.
+    prepararMesa();
+    await invocarUma('cervo-circular');
+    useCharacterStore.getState().updateCharacter(ID_DONO, { hpCurrent: 5 });
+    useCharacterStore.getState().updateCharacter(ID_ALIADO, { hpCurrent: 5 });
+    useCharacterStore.getState().updateCharacter(ID_INIMIGO, { hpCurrent: 5 });
+    const peAntes2 = pegarFicha(ID_DONO).peCurrent;
+    rolarDadosMinimos();
 
     await expect(comandarSuporte(ID_DONO, cervo.id, 'liberar-energia-reversa', [ID_DONO, ID_ALIADO]))
       .resolves.toMatchObject({ ok: true, valor: 7, alvos: 2, curaReal: true, formula: '2d12+5' });
-    expect(pegarFicha(ID_DONO).hpCurrent).toBe(12);
-    expect(pegarFicha(ID_ALIADO).hpCurrent).toBe(12);
-    expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(5);
-    expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes - 2);
+    expect(pegarFicha(ID_DONO).hpCurrent).toBe(12); // 5 + 7
+    expect(pegarFicha(ID_ALIADO).hpCurrent).toBe(12); // 5 + 7
+    expect(pegarFicha(ID_INIMIGO).hpCurrent).toBe(5); // inimigo não afetado quando não no alvo
+    expect(pegarFicha(ID_DONO).peCurrent).toBe(peAntes2 - 2); // custa 2 PE
   });
 
   it('Regeneration heals Mahoraga without additional PE cost', async () => {

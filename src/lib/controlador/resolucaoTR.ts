@@ -28,10 +28,11 @@ export async function resolverDanoAposTRInvocacao(request: TestRequest): Promise
 
   if (!passou || resolution.damageOnSuccess === 'metade') {
     const formula = parseFormulaDanoInvocacao(resolution.damageFormula);
-    if (!formula) throw new Error(`Fórmula de dano inválida: ${resolution.damageFormula}`);
-    const rolled = await rollDiceGroups(formula.dados, { label: `${resolution.sourceName} — dano após TR` });
+    if (!formula) throw new Error(`Invalid damage formula: ${resolution.damageFormula}`);
+    const rolled = await rollDiceGroups(formula.dados, { label: `${resolution.sourceName} - damage after save` });
     dano = Math.max(0, rolled.total + formula.fixo + (resolution.damageBonus ?? 0));
     if (passou) dano = Math.floor(dano / 2);
+
     if (dano > 0) {
       if (resolution.targetInvocation) {
         const aplicado = causarDanoInvocacao(

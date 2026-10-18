@@ -66,6 +66,12 @@ import {
   resolverAcertoInvocacao,
 } from './rolagens';
 import { calcularHorda, calcularReducaoDanoHorda, validarLimiteHorda, type GrauHorda, type TipoAlvoDanoHorda } from './hordas';
+import { calcularEscalaHorda, calcularPrejuizoRepeticaoHorda, verificarPerdaMembrosHorda, resolverPerdaMembrosHorda, acumularCuraParaLimiarHorda } from './hordas';
+import { consumirAceiteAutonomia, type AceiteAutonomia } from './confirmacaoAutonomia';
+import { integracaoInvocacoes, metricasIntegracaoInvocacoes as metricas } from './integracaoFlags';
+import { formatDamage, stepDamage } from '@/lib/damageStep';
+import { OrigemSuporteHordaSchema } from '@/lib/invocacoes/schema';
+import './suporteContinuoHorda';
 
 export type DirecaoInvocacao = 'norte' | 'sul' | 'leste' | 'oeste';
 export type ResultadoInvocacao = { ok: true; tokenId: string } | { ok: false; motivo: string };
@@ -119,10 +125,20 @@ function gravarInstancia(
   });
 }
 
-/** Registra a decisão exclusiva do Mestre e preserva a instância derrotada no histórico. */
-/** Ends Sapo holds when its source instance is no longer active. */
-function liberarAgarrõesDoSapo(donoSapoId: string, instanciaSapoId: string): void {
-  const grapplerId = 'invocacao-sapo:' + instanciaSapoId;
+
+/** Release tongue holds when their source invocation becomes inactive. */
+type SubcategoriaFonteDeSegurar = 'dez-sombras:sapo' | 'dez-sombras:abismo-desconhecido-do-poco';
+
+function isTongueGrappleSource(subcategoria?: string): subcategoria is SubcategoriaFonteDeSegurar {
+  return subcategoria === 'dez-sombras:sapo' || subcategoria === 'dez-sombras:abismo-desconhecido-do-poco';
+}
+
+function releaseTongueGrapples(
+  donoFonteId: string,
+  instanciaFonteId: string,
+  subcategoria: SubcategoriaFonteDeSegurar,
+): void {
+  const grapplerId = 'invocacao-sapo:' + instanciaFonteId;
   let alvosLiberados = 0;
   const personagens = [...useCharacterStore.getState().characters];
 
@@ -131,9 +147,9 @@ function liberarAgarrõesDoSapo(donoSapoId: string, instanciaSapoId: string): vo
     if (!alvo) continue;
     const condicoes = alvo.activeConditions ?? [];
     const condicoesRestantes = condicoes.filter(condition =>
-      condition.sourceEntityId !== 'dez-sombras:sapo' ||
-      condition.sourceCharId !== donoSapoId ||
-      condition.sourceInstanceId !== instanciaSapoId,
+      condition.sourceEntityId !== subcategoria ||
+      condition.sourceCharId !== donoFonteId ||
+      condition.sourceInstanceId !== instanciaFonteId,
     );
     const grappledBy = alvo.grappleState?.grappledBy ?? [];
     const grappledByRestante = grappledBy.filter(id => id !== grapplerId);
@@ -148,7 +164,7 @@ function liberarAgarrõesDoSapo(donoSapoId: string, instanciaSapoId: string): vo
   for (const donoSnapshot of personagens) {
     for (const instanciaSnapshot of donoSnapshot.instanciasInvocacao ?? []) {
       if (!(instanciaSnapshot.agarradoPorInvocacao ?? []).some(link =>
-        link.donoId === donoSapoId && link.instanciaId === instanciaSapoId)) continue;
+        link.donoId === donoFonteId && link.instanciaId === instanciaFonteId)) continue;
       const donoAtual = useCharacterStore.getState().characters.find(character => character.id === donoSnapshot.id);
       const instanciaAtual = donoAtual?.instanciasInvocacao?.find(item => item.id === instanciaSnapshot.id);
       if (!donoAtual || !instanciaAtual) continue;
@@ -156,7 +172,7 @@ function liberarAgarrõesDoSapo(donoSapoId: string, instanciaSapoId: string): vo
         ...instanciaAtual,
         version: instanciaAtual.version + 1,
         agarradoPorInvocacao: (instanciaAtual.agarradoPorInvocacao ?? []).filter(link =>
-          link.donoId !== donoSapoId || link.instanciaId !== instanciaSapoId),
+          link.donoId !== donoFonteId || link.instanciaId !== instanciaFonteId),
       });
       gravarInstancia(donoAtual, atualizada);
       alvosLiberados++;
@@ -164,10 +180,10 @@ function liberarAgarrõesDoSapo(donoSapoId: string, instanciaSapoId: string): vo
   }
 
   if (alvosLiberados > 0) {
-    useLogStore.getState().addLog('combat', 'O Sapo saiu de campo; os alvos agarrados foram liberados.');
+    useLogStore.getState().addLog('combat', 'A fonte de Segurar saiu de campo; os alvos agarrados foram liberados.');
   }
 }
-
+/** Registra a decisão exclusiva do Mestre e preserva a instância derrotada no histórico. */
 export function resolverDerrotaPendenteInvocacao(
   donoId: string,
   invocacaoId: string,
@@ -259,8 +275,8 @@ export function resolverDerrotaPendenteInvocacao(
           useMapStore.getState().updateEntity(token.id, {
             hp: instancia.hpAtual,
             hpMax: 35,
-            invocationDefense: 22,
-            invocationMovementM: 12,
+            invocationDefense: modeloTotalidade.defesa,
+            invocationMovementM: modeloTotalidade.deslocamentoM,
           });
         }
 
@@ -276,8 +292,8 @@ export function resolverDerrotaPendenteInvocacao(
     invocacoesConhecidas: modelosAtualizados,
     instanciasInvocacao: instanciasAtualizadas,
   });
-  if (modelo.subcategoria === 'dez-sombras:sapo' && resultado.instancia.estado !== 'ativa') {
-    liberarAgarrõesDoSapo(donoId, instancia.id);
+  if (isTongueGrappleSource(modelo.subcategoria) && resultado.instancia.estado !== 'ativa') {
+    releaseTongueGrapples(donoId, instancia.id, modelo.subcategoria);
   }
   return { ok: true };
 }
@@ -317,6 +333,9 @@ export function restaurarInvocacoesDescansoLongo(donoId: string): number {
       version: instancia.version + 1,
       hpAtual: instancia.hpMaximoAtual,
       estado: 'ativa',
+      ...(instancia.limiarPerdaHorda ? {
+        limiarPerdaHorda: acumularCuraParaLimiarHorda(instancia.limiarPerdaHorda, instancia.hpMaximoAtual - instancia.hpAtual),
+      } : {}),
     });
   });
 
@@ -344,7 +363,7 @@ export function restaurarInvocacoesDescansoLongo(donoId: string): number {
 }
 
 type ModoExecucaoComandoInvocacao = 'manual' | 'evento_automatico' | 'reacao';
-type OpcoesComandoInvocacao = { instanciaId?: string; requestId?: string; cadeia?: CadeiaOmni; validarReacao?: () => boolean };
+type OpcoesComandoInvocacao = { instanciaId?: string; requestId?: string; cadeia?: CadeiaOmni; validarReacao?: () => boolean; aceiteAutonomia?: AceiteAutonomia };
 
 function prepararDebitoComando(
   dono: Character,
@@ -475,6 +494,28 @@ function modeloVinculadoAHorda(personagem: Character, modeloId: string): boolean
   });
 }
 
+function modeloEmEsperaAposHorda(personagem: Character, modeloId: string): boolean {
+  const combate = useCombatStore.getState();
+  return (personagem.instanciasInvocacao ?? []).some(instancia =>
+    instancia.membrosHordaRemovidos?.some(membro => membro.modeloId === modeloId && membro.bloqueioRodadas > 0 &&
+      !(membro.combateId === (combate.combatId ?? undefined) && (combate.round ?? 1) > membro.rodadaRemocao)));
+}
+
+// Bloqueio persistente de uma rodada, independente da vida compartilhada da Horda.
+useCombatStore.subscribe((atual, anterior) => {
+  if ((atual.round ?? 1) <= (anterior.round ?? 1)) return;
+  for (const personagem of useCharacterStore.getState().characters) {
+    let alterou = false;
+    const instanciasInvocacao = (personagem.instanciasInvocacao ?? []).map(instancia => {
+      if (!instancia.membrosHordaRemovidos?.some(membro => membro.bloqueioRodadas > 0)) return instancia;
+      alterou = true;
+      return { ...instancia, version: instancia.version + 1, membrosHordaRemovidos:
+        instancia.membrosHordaRemovidos.map(membro => ({ ...membro, bloqueioRodadas: Math.max(0, membro.bloqueioRodadas - 1) })) };
+    });
+    if (alterou) useCharacterStore.getState().updateCharacter(personagem.id, { instanciasInvocacao });
+  }
+});
+
 /** API legada de posicionamento adjacente; a interface atual usa invocarControladores. */
 export interface OpcoesInvocacaoControlador {
   motivoOverrideIntermediario?: string;
@@ -516,6 +557,7 @@ export function invocarControlador(
   if (!modelo) return { ok: false, motivo: 'Invocação não pertence ao catálogo.' };
   if (modelo.domado === false) return { ok: false, motivo: 'Este shikigami ainda precisa ser domado no ritual.' };
   if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: 'Esta invocação está vinculada a uma Horda e não pode ser invocada separadamente.' };
+  if (modeloEmEsperaAposHorda(dono, modelo.id)) return { ok: false, motivo: 'Aguarde uma rodada após a saída deste membro da Horda.' };
   if (modelo.perdaPermanente) return { ok: false, motivo: 'Esta invocação foi declarada como perda permanente.' };
   if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === invocacaoId && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
     return { ok: false, motivo: 'A derrota desta invocação aguarda decisão do Mestre.' };
@@ -683,7 +725,9 @@ export function invocarHordaControlador(
   if (modelos.some(modelo => !modelo)) return { ok: false, motivo: 'O líder e todos os membros precisam pertencer ao catálogo deste Controlador.' };
   const modelosValidos = modelos as InvocacaoControlador[];
   for (const modelo of modelosValidos) {
+    if (modelo.domado === false) return { ok: false, motivo: modelo.nome + ' ainda precisa ser domado no ritual.' };
     if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: `${modelo.nome} já está vinculada a outra Horda.` };
+    if (modeloEmEsperaAposHorda(dono, modelo.id)) return { ok: false, motivo: 'Aguarde uma rodada após a saída deste membro da Horda.' };
     if (modelo.perdaPermanente) return { ok: false, motivo: `${modelo.nome} foi declarada como perda permanente.` };
     if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === modelo.id && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
       return { ok: false, motivo: `A derrota de ${modelo.nome} aguarda decisão do Mestre.` };
@@ -794,6 +838,7 @@ export function invocarHordaControlador(
       grau: membrosComponentes[index].grau,
       pvAntes: modelo.hpAtual,
       pvMaximoAntes: modelo.hpMaximo,
+      ordemEntrada: index,
     })),
     tempoAdicional: entrada.tempoAdicional,
     custoInvocacaoPE: hordaAtual.horda.custoInvocacaoPE,
@@ -927,6 +972,7 @@ export function invocarControladores(
   for (const modelo of modelosValidos) {
     if (modelo.domado === false) return { ok: false, motivo: modelo.nome + ' ainda precisa ser domado no ritual.' };
     if (modeloVinculadoAHorda(dono, modelo.id)) return { ok: false, motivo: `${modelo.nome} já está vinculada a uma Horda.` };
+    if (modeloEmEsperaAposHorda(dono, modelo.id)) return { ok: false, motivo: 'Aguarde uma rodada após a saída deste membro da Horda.' };
     if (modelo.perdaPermanente) return { ok: false, motivo: 'A invocação ' + modelo.nome + ' foi declarada como perda permanente.' };
     if (dono.instanciasInvocacao?.some(instancia => instancia.modeloId === modelo.id && instancia.estado === 'derrotada' && !instancia.resolucaoDerrota)) {
       return { ok: false, motivo: 'A derrota de ' + modelo.nome + ' aguarda decisão do Mestre.' };
@@ -1120,7 +1166,7 @@ export function recolherInvocacao(donoId: string, invocacaoId: string): boolean 
     causasSaida: Array.from(new Set([...(instanciaAtual.causasSaida ?? []), 'dissipacao_voluntaria'])),
   });
   gravarInstancia(donoAtual ?? dono, dissipada);
-  if (modelo.subcategoria === 'dez-sombras:sapo') liberarAgarrõesDoSapo(donoId, instancia.id);
+  if (isTongueGrappleSource(modelo.subcategoria)) releaseTongueGrapples(donoId, instancia.id, modelo.subcategoria);
   mapa.removeEntities(tokens.map(t => t.id));
   if (tempo.removedSeconds > 0 || tempo.discardedSeconds > 0) {
     const detalheRelogio = tempo.appliedToCurrentClock
@@ -1156,7 +1202,7 @@ export function limparInvocacoesDerrotadas(donoId: string): number {
       });
       const derrotada = preservarContribuicaoNaDerrota(derrotadaBase);
       gravarInstancia(personagem, derrotada);
-      if (modelo.subcategoria === 'dez-sombras:sapo') liberarAgarrõesDoSapo(donoId, instancia.id);
+      if (isTongueGrappleSource(modelo.subcategoria)) releaseTongueGrapples(donoId, instancia.id, modelo.subcategoria);
       useMapStore.getState().removeEntities([token.id]);
       if (derrotada.contribuicaoTempo?.estado === 'consolacao' && derrotada.contribuicaoTempo.quantidadeRestante > 0) {
         useLogStore.getState().addLog('combat', `⏱️ ${modelo.apelido?.trim() || modelo.nome} foi derrotado; ${formatarSegundosTempoInvocacao(derrotada.contribuicaoTempo.quantidadeRestante)} s restantes preservados.`, 'A contribuição temporal foi mantida no relógio do dono até o fim do combate.');
@@ -1174,8 +1220,8 @@ export function limparInvocacoesDerrotadas(donoId: string): number {
       gravarInstancia(personagem, caida);
       useMapStore.getState().updateEntity(token.id, { hp: hpAtual, invocationState: 'caida' });
     }
-    if (modelo.subcategoria === 'dez-sombras:sapo' && estado === 'caida') {
-      liberarAgarrõesDoSapo(donoId, instancia.id);
+    if (isTongueGrappleSource(modelo.subcategoria) && estado === 'caida') {
+      releaseTongueGrapples(donoId, instancia.id, modelo.subcategoria);
     }
   }
   return removidos;
@@ -1346,7 +1392,7 @@ export function causarDanoInvocacao(
   dano: number,
   tipoDano?: DamageType,
   instanciaEsperadaId?: string,
-  contexto: { tipoAlvo?: TipoAlvoDanoHorda } = {},
+  contexto: { tipoAlvo?: TipoAlvoDanoHorda; eventoId?: string } = {},
 ): { ok: true; hpRestante: number; destruida: boolean } | { ok: false; motivo: string } {
   const mapa = useMapStore.getState();
   const token = mapa.entities[tokenId];
@@ -1358,6 +1404,10 @@ export function causarDanoInvocacao(
   const atual = obterInstanciaDoToken(dono, token, modelo);
   if (instanciaEsperadaId && atual.id !== instanciaEsperadaId) {
     return { ok: false, motivo: 'A instância da invocação mudou antes da aplicação do dano.' };
+  }
+  if (contexto.eventoId !== undefined && !contexto.eventoId.trim()) return { ok: false, motivo: 'ID de dano inválido.' };
+  if (atual.composicaoHorda && contexto.eventoId && atual.eventosDanoHordaProcessados?.includes(contexto.eventoId)) {
+    return { ok: true, hpRestante: atual.hpAtual, destruida: atual.estado === 'derrotada' };
   }
   useCombatStore.getState().settleTurnTimer();
   const rdCaracteristica = reducaoDanoCaracteristicas(modelo, tipoDano);
@@ -1376,13 +1426,59 @@ export function causarDanoInvocacao(
   const absorvido = Math.min(pvTemporarios, danoFinal);
   const resultado = aplicarDanoPVInvocacao(atual, danoFinal - absorvido);
   if (!resultado.ok) return resultado;
-  const comTemporarios = InstanciaInvocacaoSchema.parse({ ...resultado.instancia, pvTemporarios: pvTemporarios - absorvido });
+  let instanciaComPerdaPendente = resultado.instancia;
+  if (integracaoInvocacoes.resolverPerdaHorda && atual.composicaoHorda) {
+    const perda = resolverPerdaMembrosHorda({ pvAntes: atual.hpAtual, pvDepois: resultado.instancia.hpAtual,
+      pvMaximo: atual.hpMaximoAtual, membros: atual.composicaoHorda.membros, limiar: atual.limiarPerdaHorda });
+    if (perda.removidos.length) {
+      const escala = calcularEscalaHorda(perda.membros);
+      const combate = useCombatStore.getState();
+      const custoRemovido = perda.removidos.reduce((total, membro) => total + ({ quarto: 1, terceiro: 2, segundo: 3, primeiro: 0, especial: 0 })[membro.grau], 0);
+      instanciaComPerdaPendente = InstanciaInvocacaoSchema.parse({ ...resultado.instancia,
+        hpAtual: perda.pvAtual, hpMaximoAtual: perda.pvMaximo, limiarPerdaHorda: perda.limiar,
+        perdaMembrosHordaPendente: undefined,
+        composicaoHorda: { ...atual.composicaoHorda, membros: perda.membros,
+          custoInvocacaoPE: Math.max(0, atual.composicaoHorda.custoInvocacaoPE - custoRemovido),
+          categoriasTamanhoAdicionais: escala.categoriasTamanho, usosAntesPrejuizoMultiplo: escala.usosAntesPrejuizo },
+        membrosHordaRemovidos: [...(atual.membrosHordaRemovidos ?? []), ...perda.removidos.map(membro => ({
+          modeloId: membro.modeloId, motivo: 'metade_pv' as const,
+          pvIndividual: dono.invocacoesConhecidas?.find(item => item.id === membro.modeloId)?.hpAtual ?? membro.pvAntes,
+          rodadaRemocao: combate.round ?? 1, bloqueioRodadas: 1,
+          ...(combate.combatId ? { combateId: combate.combatId } : {}),
+        }))],
+      });
+      metricas.perdasHordaResolvidas++;
+      metricas.membrosHordaRemovidos += perda.removidos.length;
+      useLogStore.getState().addLog('combat', `Horda perdeu ${perda.removidos.length} membro(s): ${perda.removidos.map(m => m.modeloId).join(', ')}.`,
+        `PV proporcionais: ${perda.pvAtual}/${perda.pvMaximo}. Integrantes preservam PV individuais e aguardam uma rodada para reinvocar.`);
+    }
+  } else if (integracaoInvocacoes.registrarPerdaHorda && atual.composicaoHorda && !atual.perdaMembrosHordaPendente) {
+    const perda = verificarPerdaMembrosHorda(atual.hpAtual, resultado.instancia.hpAtual, atual.hpMaximoAtual, atual.composicaoHorda.membros.length);
+    if (perda.pendente && perda.quantidade > 0) {
+      instanciaComPerdaPendente = InstanciaInvocacaoSchema.parse({
+        ...resultado.instancia,
+        perdaMembrosHordaPendente: {
+          motivo: 'metade_pv', quantidade: perda.quantidade,
+          pvAntes: atual.hpAtual, pvDepois: resultado.instancia.hpAtual, pvMaximo: atual.hpMaximoAtual,
+          membrosIds: atual.composicaoHorda.membros.map(membro => membro.modeloId),
+        },
+      });
+      metricas.perdasHordaPendentes++;
+      useLogStore.getState().addLog('combat', `Horda atingiu metade dos PV: perda de ${perda.quantidade} membro(s) pendente de decisão do Mestre.`,
+        'Remoção bloqueada: definir ajuste de PV, desempate, destino dos membros e repetição do limiar. Nenhum PV foi redistribuído.');
+    }
+  }
+  const comTemporarios = InstanciaInvocacaoSchema.parse({ ...instanciaComPerdaPendente, pvTemporarios: pvTemporarios - absorvido,
+    ...(atual.composicaoHorda && contexto.eventoId ? {
+      eventosDanoHordaProcessados: [...(atual.eventosDanoHordaProcessados ?? []), contexto.eventoId],
+    } : {}),
+  });
   const instanciaAtualizada = comTemporarios.estado === 'derrotada'
     ? preservarContribuicaoNaDerrota(comTemporarios)
     : comTemporarios;
   gravarInstancia(dono, instanciaAtualizada);
-  if (modelo.subcategoria === 'dez-sombras:sapo' && instanciaAtualizada.estado !== 'ativa') {
-    liberarAgarrõesDoSapo(dono.id, instanciaAtualizada.id);
+  if (isTongueGrappleSource(modelo.subcategoria) && instanciaAtualizada.estado !== 'ativa') {
+    releaseTongueGrapples(dono.id, instanciaAtualizada.id, modelo.subcategoria);
   }
   if (instanciaAtualizada.estado === 'derrotada') {
     mapa.removeEntities([tokenId]);
@@ -1400,6 +1496,11 @@ export function causarDanoInvocacao(
   }
   mapa.updateEntity(tokenId, {
     hp: instanciaAtualizada.hpAtual,
+    hpMax: instanciaAtualizada.hpMaximoAtual,
+    ...(instanciaAtualizada.composicaoHorda ? {
+      invocationHordeMemberIds: instanciaAtualizada.composicaoHorda.membros.map(membro => membro.modeloId),
+      invocationHordeSizeIncreases: instanciaAtualizada.composicaoHorda.categoriasTamanhoAdicionais,
+    } : {}),
     invocationTempHp: instanciaAtualizada.pvTemporarios ?? 0,
     invocationState: instanciaAtualizada.estado,
     invocationInstanceId: instanciaAtualizada.id,
@@ -1414,9 +1515,11 @@ function atualizarEfeitosSuporteInvocacao(
   instancia: InstanciaInvocacao,
   efeitos: NonNullable<InstanciaInvocacao['efeitosSuporteAtivos']>,
 ): InstanciaInvocacao {
+  const maisRecente = useCharacterStore.getState().characters.find(c => c.id === personagem.id)
+    ?.instanciasInvocacao?.find(item => item.id === instancia.id) ?? instancia;
   const atualizada = InstanciaInvocacaoSchema.parse({
-    ...instancia,
-    version: instancia.version + 1,
+    ...maisRecente,
+    version: maisRecente.version + 1,
     efeitosSuporteAtivos: efeitos,
   });
   gravarInstancia(personagem, atualizada);
@@ -1458,6 +1561,10 @@ export function curarInvocacao(tokenId: string, cura: number): { ok: true; hpRes
   const atual = obterInstanciaDoToken(dono, token, modelo);
   const resultado = aplicarCuraPVInvocacao(atual, cura);
   if (!resultado.ok) return resultado;
+  if (resultado.instancia.limiarPerdaHorda) {
+    resultado.instancia = InstanciaInvocacaoSchema.parse({ ...resultado.instancia,
+      limiarPerdaHorda: acumularCuraParaLimiarHorda(resultado.instancia.limiarPerdaHorda, resultado.instancia.hpAtual - atual.hpAtual) });
+  }
   gravarInstancia(dono, resultado.instancia);
   mapa.updateEntity(tokenId, {
     hp: resultado.instancia.hpAtual,
@@ -1715,25 +1822,33 @@ export async function comandarSegurarSapo(
   donoId: string,
   invocacaoId: string,
   alvoId: string,
-  opcoes?: { instanciaId?: string; requestId?: string },
+  opcoes?: { instanciaId?: string; requestId?: string; membrosSapoVivos?: number },
 ): Promise<{ ok: true; sucesso: boolean; aplicouCondicao: boolean; totalSapo: number; totalAlvo: number; nomeAlvo: string } | { ok: false; motivo: string }> {
   const dono = useCharacterStore.getState().characters.find(character => character.id === donoId);
   const modelo = dono?.invocacoesConhecidas?.find(item => item.id === invocacaoId && item.donoCharacterId === donoId);
-  if (!dono || !modelo || modelo.subcategoria !== 'dez-sombras:sapo') {
-    return { ok: false, motivo: 'Segurar só pode ser comandado por uma instância do Sapo.' };
+  if (!dono || !modelo || !isTongueGrappleSource(modelo.subcategoria)) {
+    return { ok: false, motivo: 'Segurar só pode ser comandado pelo Sapo ou pelo Abismo.' };
+  }
+  const ehAbismo = modelo.subcategoria === 'dez-sombras:abismo-desconhecido-do-poco';
+  if (ehAbismo && useRoleStore.getState().role !== 'MASTER') {
+    return { ok: false, motivo: 'Somente o Mestre pode confirmar a quantidade de sapos vivos do Abismo.' };
+  }
+  if (ehAbismo && (!Number.isInteger(opcoes?.membrosSapoVivos) ||
+    (opcoes?.membrosSapoVivos ?? 0) < 1 || (opcoes?.membrosSapoVivos ?? 0) > 3)) {
+    return { ok: false, motivo: 'Informe explicitamente de 1 a 3 sapos vivos; a contagem não pode ser inferida pelos PV.' };
   }
   if (useCombatStore.getState().inCombat && !podeComandarInvocacao(donoId)) {
     return { ok: false, motivo: 'Segurar só pode ser comandado no turno do dono.' };
   }
   const acao = modelo.acoes.find(item => item.id === 'segurar');
-  if (!acao) return { ok: false, motivo: 'A ação Segurar não está configurada na ficha do Sapo.' };
+  if (!acao) return { ok: false, motivo: 'A ação Segurar não está configurada nesta invocação.' };
   const mapa = useMapStore.getState();
   const servo = tokensInvocados(donoId).find(token => token.invocationId === invocacaoId &&
     (!opcoes?.instanciaId || token.invocationInstanceId === opcoes.instanciaId) &&
     (token.hp ?? 0) > 0 && (!token.invocationState || token.invocationState === 'ativa'));
-  if (!servo?.invocationInstanceId) return { ok: false, motivo: 'Sapo ativo não encontrado no mapa.' };
+  if (!servo?.invocationInstanceId) return { ok: false, motivo: 'Invocação ativa não encontrada no mapa.' };
   const instancia = obterInstanciaDoToken(dono, servo, modelo);
-  if (instancia.estado !== 'ativa') return { ok: false, motivo: 'Sapo caído ou inativo não pode manter Agarrado.' };
+  if (instancia.estado !== 'ativa') return { ok: false, motivo: 'Invocação caída ou inativa não pode manter Agarrado.' };
 
   let tokenAlvo: Entity | undefined;
   let personagemAlvo: Character | undefined;
@@ -1772,9 +1887,9 @@ export async function comandarSegurarSapo(
     (servo.x + servo.w / 2) - (tokenAlvo.x + tokenAlvo.w / 2),
     (servo.y + servo.h / 2) - (tokenAlvo.y + tokenAlvo.h / 2),
   ) * escala;
-  if (distancia > (acao.alcanceM ?? 9) + 1e-6) return { ok: false, motivo: 'O alvo está além dos 9 m da língua do Sapo.' };
+  if (distancia > (acao.alcanceM ?? 9) + 1e-6) return { ok: false, motivo: 'O alvo está além do alcance de Segurar desta invocação.' };
 
-  const bonusSapo = calcularBonusPericiaInvocacao(dono, modelo, 'LUTA')?.total ?? 0;
+  const bonusSapo = ehAbismo ? 5 + 2 * (opcoes!.membrosSapoVivos! - 1) : 5;
   const bonusAlvo = personagemAlvo
     ? bonusPericiaPersonagem(personagemAlvo, 'Atletismo')
     : calcularBonusPericiaInvocacao(donoInvocacaoAlvo!, modeloInvocacaoAlvo!, 'ATLETISMO')?.total ?? 0;
@@ -1790,7 +1905,7 @@ export async function comandarSegurarSapo(
   }, acao);
   gravarInstancia(dono, instanciaGasta, { peCurrent: debito.peDonoRestante });
 
-  const d20Sapo = await rollD20Autonomo(bonusSapo, { label: 'Luta do Sapo: Segurar' });
+  const d20Sapo = await rollD20Autonomo(bonusSapo, { label: 'Luta de ' + modelo.nome + ': Segurar' });
   const d20Alvo = await rollD20Autonomo(bonusAlvo, { label: 'Atletismo: resistir a Segurar' });
   const totalSapo = d20Sapo + bonusSapo;
   const totalAlvo = d20Alvo + bonusAlvo;
@@ -1808,7 +1923,7 @@ export async function comandarSegurarSapo(
         remainingRounds: -1,
         sourceCharId: donoId,
         sourceCharName: modelo.nome,
-        sourceEntityId: 'dez-sombras:sapo',
+        sourceEntityId: modelo.subcategoria,
         sourceInstanceId: instancia.id,
       });
       aplicouCondicao = Boolean(idAplicado);
@@ -1886,14 +2001,20 @@ export async function escaparAgarradoPorInvocacao(
 ): Promise<ResultadoFugaSapo> {
   const alvo = useCharacterStore.getState().characters.find(character => character.id === donoAlvoId);
   const condicao = alvo?.activeConditions?.find(condition => condition.id === conditionId &&
-    condition.conditionId === 'agarrado' && condition.sourceEntityId === 'dez-sombras:sapo');
+    condition.conditionId === 'agarrado' && isTongueGrappleSource(condition.sourceEntityId));
   if (!alvo || !condicao?.sourceCharId || !condicao.sourceInstanceId) {
     return { ok: false, motivo: 'Agarrão do Sapo não encontrado nesta ficha.' };
+  }
+  if (condicao.sourceEntityId === 'dez-sombras:abismo-desconhecido-do-poco') {
+    return { ok: false, motivo: 'O teste e o custo da fuga do Abismo não estão definidos; resolva manualmente.' };
   }
   const donoSapo = useCharacterStore.getState().characters.find(character => character.id === condicao.sourceCharId);
   const modeloSapo = donoSapo?.invocacoesConhecidas?.find(modelo => modelo.id ===
     donoSapo.instanciasInvocacao?.find(instancia => instancia.id === condicao.sourceInstanceId)?.modeloId);
-  if (!donoSapo || !modeloSapo) return { ok: false, motivo: 'O Sapo que mantém o agarrão não foi encontrado.' };
+  if (!donoSapo || !modeloSapo) return { ok: false, motivo: 'A fonte do agarrão não foi encontrada.' };
+  if (modeloSapo.subcategoria === 'dez-sombras:abismo-desconhecido-do-poco') {
+    return { ok: false, motivo: 'O teste e o custo da fuga do Abismo não estão definidos; resolva manualmente.' };
+  }
   const resultado = await rolarFugaSapo(alvo, undefined, pericia, donoSapo.id, modeloSapo, condicao.sourceInstanceId);
   if (resultado.ok && resultado.escapou) {
     useCharacterStore.getState().removeCondition(donoAlvoId, conditionId);
@@ -1923,7 +2044,10 @@ export async function escaparInvocacaoAgarrada(
   if (!donoAlvo || !instanciaAlvo || !modeloAlvo || !vinculo) {
     return { ok: false, motivo: 'Agarrão do Sapo não encontrado nesta instância.' };
   }
-  if (!donoSapo || !modeloSapo) return { ok: false, motivo: 'O Sapo que mantém o agarrão não foi encontrado.' };
+  if (!donoSapo || !modeloSapo) return { ok: false, motivo: 'A fonte do agarrão não foi encontrada.' };
+  if (modeloSapo.subcategoria === 'dez-sombras:abismo-desconhecido-do-poco') {
+    return { ok: false, motivo: 'O teste e o custo da fuga do Abismo não estão definidos; resolva manualmente.' };
+  }
   const resultado = await rolarFugaSapo(donoAlvo, modeloAlvo, pericia, donoSapo.id, modeloSapo, vinculo.instanciaId);
   if (resultado.ok && resultado.escapou && donoAlvo && instanciaAlvo) {
     const atualizada = InstanciaInvocacaoSchema.parse({
@@ -1948,6 +2072,12 @@ export async function executarAtaqueAutonomoInvocacao(
   alvoId: string | string[],
   opcoes: OpcoesComandoInvocacao,
 ): Promise<ResultadoAtaqueUnicoInvocacao | ResultadoAtaqueMultiploInvocacao | { ok: false; motivo: string }> {
+  const dono = useCharacterStore.getState().characters.find(item => item.id === donoId);
+  if (!consumirAceiteAutonomia(opcoes.aceiteAutonomia, {
+    requestId: opcoes.requestId ?? '', profileId: dono?.profileId ?? '', donoId,
+    instanciaId: opcoes.instanciaId ?? '', modeloId: invocacaoId, acaoId,
+    alvos: Array.isArray(alvoId) ? alvoId : [alvoId],
+  })) return { ok: false, motivo: 'A ação autônoma exige confirmação afirmativa do jogador Controlador.' };
   return executarAtaqueInvocacao(donoId, invocacaoId, acaoId, alvoId, opcoes, 'evento_automatico');
 }
 
@@ -2182,6 +2312,7 @@ async function executarAtaqueInvocacao(
     : !aceitaAlvoAtivo(dono, alvo.dono, resolucaoOmni.config))) {
     return { ok: false, motivo: 'Uma invocação atingida não atende ao filtro OMNI.' };
   }
+  const escalaHorda = calcularEscalaHorda(integracaoInvocacoes.escalaHorda ? instancia.composicaoHorda?.membros ?? [] : []);
   const estadoTurnoAtaque = useCombatStore.getState();
   const rodadaAtaque = estadoTurnoAtaque.round ?? 1;
   const movimentoInvestida = instancia.investidaPerfuranteTurno;
@@ -2195,16 +2326,27 @@ async function executarAtaqueInvocacao(
   let formulaBase = acao.dano ? parseFormulaDanoInvocacao(acao.dano) : null;
   if (formulaBase && bonusDadosInvestida > 0) {
     const dados = [...formulaBase.dados, { count: bonusDadosInvestida, sides: 10 }];
-    const formulaDano = dados.map(dado => String(dado.count) + 'd' + String(dado.sides)).join('+');
-    acao = { ...acao, dano: formulaDano + (formulaBase.fixo ? '+' + formulaBase.fixo : '') };
+    acao = {
+      ...acao,
+      dano: `${formatDamage(dados)}${formulaBase.fixo ? `+${formulaBase.fixo}` : ''}`,
+    };
     formulaBase = { ...formulaBase, dados };
   }
-  const formula = formulaBase;
+  const formula = formulaBase && escalaHorda.niveisAtaqueCura > 0
+    ? { ...formulaBase, dados: stepDamage(formulaBase.dados, escalaHorda.niveisAtaqueCura) }
+    : formulaBase;
+  if (formula && escalaHorda.niveisAtaqueCura > 0) {
+    acao = { ...acao, dano: `${formatDamage(formula.dados)}${formula.fixo ? `+${formula.fixo}` : ''}` };
+    metricas.escalas.ataque++;
+  }
   if (tipoTeste === 'ataque' && !formula) return { ok: false, motivo: 'Dano inválido; use dados como 2d12+1d6+3.' };
   if (tipoTeste === 'resistencia' && acao.dano && !formula) return { ok: false, motivo: 'Dano inválido; use dados como 2d12+1d6+3.' };
   const bonusAtaqueBase = tipoTeste === 'ataque' ? calcularBonusAtaqueInvocacao(dono, modelo, acao) : null;
+  const ataquesAnteriores = instancia.usosAtaqueTurno?.rodada === rodadaAtaque ? instancia.usosAtaqueTurno.total : 0;
+  const prejuizoAtaque = integracaoInvocacoes.escalaHorda && instancia.composicaoHorda
+    ? 3 * calcularPrejuizoRepeticaoHorda(ataquesAnteriores, instancia.composicaoHorda.membros) : 0;
   const bonusAtaque = bonusAtaqueBase
-    ? { ...bonusAtaqueBase, total: bonusAtaqueBase.total + bonusAcertoAuxilio }
+    ? { ...bonusAtaqueBase, total: bonusAtaqueBase.total + bonusAcertoAuxilio - prejuizoAtaque }
     : null;
   if (tipoTeste === 'ataque' && (!bonusAtaque || !Number.isFinite(bonusAtaque.total))) {
     return { ok: false, motivo: 'Defina um atributo de ataque válido na ficha do Shikigami.' };
@@ -2217,6 +2359,7 @@ async function executarAtaqueInvocacao(
   const gasto = gastarAcaoDaInstancia(instancia, categoria, 1, opcoes?.requestId);
   if (!gasto.ok) return gasto;
   const comRecursosDebitados = { ...gasto.instancia, recursosAtuais: debito.recursosRestantes,
+    ...(tipoTeste === 'ataque' ? { usosAtaqueTurno: { rodada: rodadaAtaque, total: ataquesAnteriores + 1 } } : {}),
     ...(modelo.subcategoria === 'dez-sombras:touro-perfurante' && acaoId === 'investida-perfurante'
       ? { investidaPerfuranteTurno: undefined }
       : {}),
@@ -2346,21 +2489,9 @@ async function executarAtaqueInvocacao(
     ];
     for (const alvo of alvosParaAtaque) {
       const { defesa } = alvo;
-      const eMordidaDeCao = acaoId === 'mordida' &&
-        ['dez-sombras:cao-branco', 'dez-sombras:cao-preto', 'dez-sombras:totalidade'].includes(modelo.subcategoria ?? '');
-      const temShikigamiAoLadoDoAlvo = eMordidaDeCao && Object.values(mapa.entities).some(outro => {
-        if (outro.id === servo.id || outro.id === alvo.token.id ||
-          !outro.invocationId || !outro.invocationInstanceId || (outro.hp ?? 0) <= 0) return false;
-        const distancia = Math.hypot(
-          (outro.x + outro.w / 2) - (alvo.token.x + alvo.token.w / 2),
-          (outro.y + outro.h / 2) - (alvo.token.y + alvo.token.h / 2),
-        ) * escala;
-        return distancia <= 1.5 + 1e-6;
-      });
-      const bonusAlcateia = temShikigamiAoLadoDoAlvo
-        ? modelo.subcategoria === 'dez-sombras:totalidade' ? 4 : 2
-        : 0;
-      const bonusAtaqueAlvo = bonusAtaque!.total + bonusAlcateia;
+      // Alcateia é uma habilidade manual que requer decisão explícita do Mestre
+      // Nenhum bônus de Alcateia é aplicado automaticamente aqui
+      const bonusAtaqueAlvo = bonusAtaque!.total;
       const d20Inicial = await rollD20Autonomo(bonusAtaqueAlvo, { label: 'Ataque de ' + modelo.nome + ': ' + acao.nome });
       const atacanteAgarrado = (instancia.agarradoPorInvocacao?.length ?? 0) > 0;
       const d20Alternativo = atacanteAgarrado
@@ -2389,6 +2520,7 @@ async function executarAtaqueInvocacao(
       if (alvo.tipo === 'invocacao') {
         const aplicado = causarDanoInvocacao(alvo.token.id, dano, acao.tipoDano ?? 'DCO', alvo.instanciaId, {
           tipoAlvo: selecaoArea ? 'area' : 'unico',
+          ...(opcoes?.requestId ? { eventoId: `${opcoes.requestId}:${alvo.alvoId}` } : {}),
         });
         if (!aplicado.ok) throw new Error(aplicado.motivo);
       } else {
@@ -2514,8 +2646,12 @@ export async function comandarSuporte(
   const repeticoes = acao.efeitoSuporte.efeito === 'cura' || marcadorUso?.rodada !== rodada
     ? 0
     : marcadorUso.total ?? Object.values(marcadorUso.porEfeito).reduce((total, quantidade) => total + quantidade, 0);
-  const calculado = calcularEfeitoSuporte(modelo, acao, repeticoes);
+  const escalaHorda = calcularEscalaHorda(integracaoInvocacoes.escalaHorda ? instancia.composicaoHorda?.membros ?? [] : []);
+  const penalidades = calcularPrejuizoRepeticaoHorda(repeticoes,
+    integracaoInvocacoes.escalaHorda ? instancia.composicaoHorda?.membros ?? [] : []);
+  const calculado = calcularEfeitoSuporte(modelo, acao, penalidades, escalaHorda);
   if (!calculado.ok) return calculado;
+  if (instancia.composicaoHorda && integracaoInvocacoes.escalaHorda) metricas.escalas[calculado.efeito.tipo]++;
   const possuiEnergiaReversa = capacidadeEnergiaReversaInvocacao(modelo, dono);
   const curaLivre = calculado.efeito.tipo === 'cura' && acao.curaRealSemCusto === true;
   const curaReal = calculado.efeito.tipo === 'cura' && (possuiEnergiaReversa || curaLivre);
@@ -2597,6 +2733,12 @@ export async function comandarSuporte(
       } else if (calculado.efeito.tipo === 'reducao_dano') {
         buff = { id: novoIdInvocacao('auxilio-rd'), spellName: origem, type: 'rd', value: calculado.efeito.valor, remainingTurns: -1, sourceCharId: donoId, expiraNaRodada: roundExpiry, rdDamageTypes: calculado.efeito.tiposDano };
         efeitoInvocacao = { id: novoIdInvocacao('auxilio-rd'), tipo: 'reducao_dano', valor: calculado.efeito.valor, tiposDano: calculado.efeito.tiposDano, expiraNaRodada: roundExpiry };
+      }
+      if (instancia.composicaoHorda) {
+        const suporteHorda = OrigemSuporteHordaSchema.parse({ donoId, instanciaId: instancia.id,
+          usosAnteriores: repeticoes, grau: modelo.grau, categoriaAcao: acao.categoriaAcao, config: acao.efeitoSuporte });
+        if (buff) buff = { ...buff, suporteHorda };
+        if (efeitoInvocacao) efeitoInvocacao = { ...efeitoInvocacao, suporteHorda };
       }
       if (alvo.tipo === 'personagem') {
         if (buff) characterStore.addBuff(alvo.personagem.id, buff);

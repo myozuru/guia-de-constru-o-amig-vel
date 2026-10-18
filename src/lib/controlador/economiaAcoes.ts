@@ -196,5 +196,8 @@ export function processarResetEconomiaInstancia(
     recargas,
     marcadoresResetEconomia: { ...instancia.marcadoresResetEconomia, [escopo]: eventoId },
     recursosAtuais,
+    ...((escopo === 'inicio_turno_dono' || escopo === 'inicio_rodada' || escopo === 'inicio_combate') ? {
+      usosAtaqueTurno: undefined, usosAuxilioRodada: undefined,
+    } : {}),
   });
 }

@@ -566,165 +566,542 @@ export function ConstrutorEntidade({ aberto, onClose, entidadeInicial, onSalvar,
               </TabsContent>
 
               {/* CUSTOS */}
-              <TabsContent value="custos" className="space-y-3 pt-3">
+              <TabsContent value="custos" className="space-y-4 pt-4">
                 {/* Bloco Usos & Recarga (Pilar de Recursos) */}
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-                  <Label className="text-xs uppercase tracking-wider text-amber-600">
-                    Usos limitados
-                  </Label>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Se preenchido, cada cópia no inventário ganha um contador.
-                    Use <code className="text-foreground/80">@ITEM.usos_restantes</code> e
-                    <code className="text-foreground/80"> @ITEM.usos_totais</code> nas fórmulas.
-                    Deixe em <strong>0</strong> para uso ilimitado.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Quantidade de Usos</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={ent.usos?.total ?? 0}
-                        onChange={(e) => {
-                          const total = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          if (total === 0) {
-                            const { usos: _, ...rest } = ent;
-                            setEnt(rest);
-                          } else {
+                <div className="relative rounded-xl border border-amber-400/30 bg-amber-50 p-6 space-y-5 animate-in fade-in"
+                  style={{
+                    animationDelay: '100ms',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                  }}
+                >
+                  <div className="flex items-start justify-between w-full space-x-4">
+                    <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                      <svg className="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M9 12l2 2 4-4M7.5 5.5v11a4.5 4.5 0 004.5 4.5h9a4.5 4.5 0 004.5-4.5v-11"></path>
+                        </svg>
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-sm font-medium tracking-wider text-amber-700 mb-1 block">
+                        Usos limitados
+                      </Label>
+                      <p className="text-sm text-amber-600 leading-relaxed mb-3">
+                        Se preenchido, cada cópia no inventário ganha um contador.
+                        Use <code className="text-amber-800 font-mono">@ITEM.usos_restantes</code> e
+                        <code className="text-amber-800 font-mono"> @ITEM.usos_totais</code> nas fórmulas.
+                        Deixe em <strong className="text-amber-800">0</strong> para uso ilimitado.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium tracking-wider text-amber-700 block">
+                        Quantidade de Usos
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min={0}
+                          className="w-full rounded-xl border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium focus:border-amber-400 focus:ring-2 focus:ring-amber-300 focus:bg-white transition-all duration-300 ease-in-out hover:border-amber-400"
+                          value={ent.usos?.total ?? 0}
+                          onChange={(e) => {
+                            const total = Math.max(0, parseInt(e.target.value, 10) || 0);
+                            if (total === 0) {
+                              const { usos: _, ...rest } = ent;
+                              setEnt(rest);
+                            } else {
+                              setEnt({
+                                ...ent,
+                                usos: { total, recarga: ent.usos?.recarga ?? 'diaria' },
+                              });
+                            }
+                          }}
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+                          <span className="text-amber-400 text-xs">uses</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium tracking-wider text-amber-700 block">
+                        Tipo de Recarga
+                      </Label>
+                      <div className="relative">
+                        <Select
+                          value={ent.usos?.recarga ?? 'diaria'}
+                          onValueChange={(v) => {
+                            if (!ent.usos) return;
                             setEnt({
                               ...ent,
-                              usos: { total, recarga: ent.usos?.recarga ?? 'diaria' },
+                              usos: { ...ent.usos, recarga: v as 'diaria' | 'porCena' | 'descansoCurto' | 'manual' },
                             });
-                          }
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Tipo de Recarga</Label>
-                      <Select
-                        value={ent.usos?.recarga ?? 'diaria'}
-                        onValueChange={(v) => {
-                          if (!ent.usos) return;
-                          setEnt({
-                            ...ent,
-                            usos: { ...ent.usos, recarga: v as 'diaria' | 'porCena' | 'descansoCurto' | 'manual' },
-                          });
-                        }}
-                        disabled={!ent.usos}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="diaria">Diária (vira o dia)</SelectItem>
-                          <SelectItem value="porCena">Por Cena</SelectItem>
-                          <SelectItem value="descansoCurto">Descanso Curto</SelectItem>
-                          <SelectItem value="manual">Manual (Mestre)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                {(ent.categoria === 'arma' || ent.categoria === 'item') && (
-                  <div className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-2" data-testid="omni-replica-bloco">
-                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary">
-                      <input
-                        type="checkbox"
-                        data-testid="omni-replica-toggle"
-                        checked={!!ent.replica}
-                        onChange={(e) => {
-                          if (e.target.checked) setEnt({ ...ent, replica: replicaPadrao('medio') });
-                          else { const { replica: _r, ...rest } = ent; setEnt(rest); }
-                        }}
-                      />
-                      Réplica / Item Materializável
-                    </label>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      O jogador escolhe quando materializar no combate: paga o PE de invocação,
-                      a arma surge na mão e, no começo de cada turno dele, paga a sustentação ou deixa ela se desfazer.
-                    </p>
-                    {ent.replica && (
-                      <div className="space-y-2">
-                        <div>
-                          <Label className="text-xs">Porte (preenche a tabela)</Label>
-                          <Select
-                            value={ent.replica.porte}
-                            onValueChange={(v) => {
-                              const p = custosDoPorte(v as ReplicaPorte);
-                              setEnt({ ...ent, replica: { ...ent.replica!, porte: p.id, peInvocacao: p.invocacao, peSustentacao: p.sustentacao } });
+                          }}
+                          disabled={!ent.usos}
+                        >
+                          <SelectTrigger className="flex items-center w-full justify-between">
+                            <SelectValue className="text-amber-700" />
+                            <svg className="h-4 w-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M19 9l-7 7-7-7"></path>
+                              </svg>
+                          </SelectTrigger>
+                          <SelectContent className="z-50 mt-1 w-full rounded-xl border-amber-300 bg-amber-50 py-1 text-sm font-medium shadow-lg ring-1 ring-amber-200"
+                            style={{
+                              animation: 'fade-up 200ms ease-in-out',
+                              animationFillMode: 'forwards'
                             }}
                           >
-                            <SelectTrigger data-testid="omni-replica-porte"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {PORTES_REPLICA.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>{p.label} — {p.invocacao} PE / {p.sustentacao} PE por rodada</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <SelectItem
+                              className="flex items-center px-4 py-2 text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors duration-200"
+                              value="diaria"
+                            >
+                              Diária (vira o dia)
+                            </SelectItem>
+                            <SelectItem
+                              className="flex items-center px-4 py-2 text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors duration-200"
+                              value="porCena"
+                            >
+                              Por Cena
+                            </SelectItem>
+                            <SelectItem
+                              className="flex items-center px-4 py-2 text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors duration-200"
+                              value="descansoCurto"
+                            >
+                              Descanso Curto
+                            </SelectItem>
+                            <SelectItem
+                              className="flex items-center px-4 py-2 text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors duration-200"
+                              value="manual"
+                            >
+                              Manual (Mestre)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-amber-400 text-xs">
+                          ⏱
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label className="text-xs">PE para Materializar</Label>
-                            <Input
-                              type="number" min={0} data-testid="omni-replica-invocacao"
-                              value={ent.replica.peInvocacao}
-                              onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, peInvocacao: Math.max(0, parseInt(e.target.value, 10) || 0) } })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Feedback Indicator */}
+                  {ent.usos && ent.usos.total > 0 && (
+                    <div className="mt-4 pt-4 border-t border-amber-200">
+                      <div className="flex items-center space-x-3">
+                        <div className="h-3 w-3 rounded-full bg-amber-400 animate-pulse" />
+                        <span className="text-sm font-medium text-amber-800">
+                          Recurso ativo: {ent.usos.total} uso{ent.usos.total === 1 ? '' : 's'}
+                          com recarga {ent.usos.recarga === 'diaria' ? 'diária'
+                            : ent.usos.recarga === 'porCena' ? 'por cena'
+                            : ent.usos.recarga === 'descansoCurto' ? 'descanso curto'
+                            : 'manual'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {(ent.categoria === 'arma' || ent.categoria === 'item') && (
+                  <div className="relative rounded-xl border border-primary-400/30 bg-primary-50 p-6 space-y-5 animate-in fade-in"
+                    style={{
+                      animationDelay: '200ms',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    }}
+                  >
+                    <div className="flex items-start justify-between w-full space-x-4">
+                      <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-primary-100 flex items-center justify-center">
+                        <svg className="h-5 w-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M12 8c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0 12c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0-6c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2z"></path>
+                          </svg>
+                      </div>
+                      <div className="flex-1">
+                        <Label className="text-sm font-medium tracking-wider text-primary-700 mb-1 block">
+                          Réplica / Item Materializável
+                        </Label>
+                        <p className="text-sm text-primary-600 leading-relaxed mb-3">
+                          O jogador escolhe quando materializar no combate: paga o PE de invocação,
+                          a arma surge na mão e, no começo de cada turno dele, paga a sustentação ou deixa ela se desfazer.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0">
+                          <div className="h-4 w-4 rounded-full border-2 border-primary-300 bg-primary-50"
+                            style={{
+                              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 cursor-pointer appearance-none"
+                              checked={!!ent.replica}
+                              onChange={(e) => {
+                                if (e.target.checked) setEnt({ ...ent, replica: replicaPadrao('medio') });
+                                else { const { replica: _r, ...rest } = ent; setEnt(rest); }
+                              }}
                             />
                           </div>
-                          <div>
-                            <Label className="text-xs">PE de Sustentação (por rodada)</Label>
-                            <Input
-                              type="number" min={0} data-testid="omni-replica-sustentacao"
-                              value={ent.replica.peSustentacao}
-                              onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, peSustentacao: Math.max(0, parseInt(e.target.value, 10) || 0) } })}
-                            />
+                        </div>
+                        <div className="flex-1 space-x-2">
+                          <div className="text-sm font-medium text-primary-700">
+                            Réplica ativada
+                          </div>
+                          <div className="text-xs text-primary-500">
+                            Quando ativado, define as propriedades de materialização
                           </div>
                         </div>
-                        <label className="flex items-center gap-2 text-xs">
-                          <input type="checkbox" checked={ent.replica.desintegrarAoSoltar}
-                            onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, desintegrarAoSoltar: e.target.checked } })} />
-                          Desintegrar ao soltar / ser desarmado
-                        </label>
-                        <label className="flex items-center gap-2 text-xs">
-                          <input type="checkbox" checked={ent.replica.cobrarPorRodada}
-                            onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, cobrarPorRodada: e.target.checked } })} />
-                          Cobrar sustentação no começo de cada turno
-                        </label>
+                      </div>
+                    </div>
+
+                    {ent.replica && (
+                      <div className="mt-5 pt-4 border-t border-primary-200">
+                        <div className="space-y-4">
+
+                          {/* Porte Section */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium tracking-wider text-primary-700 block flex items-start space-x-2">
+                              Porte (define tabela de custos)
+                              <span className="text-xs text-primary-500">[Pode alterar custos depois]</span>
+                            </Label>
+                            <div className="relative mt-1">
+                              <Select
+                                value={ent.replica.porte}
+                                onValueChange={(v) => {
+                                  const p = custosDoPorte(v as ReplicaPorte);
+                                  setEnt({ ...ent, replica: { ...ent.replica!, porte: p.id, peInvocacao: p.invocacao, peSustentacao: p.sustentacao } });
+                                }}
+                              >
+                                <SelectTrigger className="flex items-center w-full justify-between">
+                                  <SelectValue className="text-primary-700" />
+                                  <svg className="h-4 w-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </SelectTrigger>
+                                <SelectContent className="z-50 mt-1 w-full rounded-xl border-primary-300 bg-primary-50 py-1 text-sm font-medium shadow-lg ring-1 ring-primary-200"
+                                  style={{
+                                    animation: 'fade-up 200ms ease-in-out',
+                                    animationFillMode: 'forwards'
+                                  }}
+                                >
+                                  {PORTES_REPLICA.map((p) => (
+                                    <SelectItem
+                                      key={p.id}
+                                      className="flex items-center px-4 py-2 text-primary-700 cursor-pointer hover:bg-primary-100 transition-colors duration-200"
+                                      value={p.id}
+                                    >
+                                      <div className="flex-1">{p.label}</div>
+                                      <div className="text-xs text-primary-500 flex-1 text-right">
+                                        {p.invocacao} PE / {p.sustentacao} PE/turno
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-primary-400 text-xs">
+                                ⚖
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Custos de Materialização Section */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium tracking-wider text-primary-700 block flex items-start space-x-2">
+                              Custos de Materialização
+                              <span className="text-xs text-primary-500">[PE por invocação e sustentação]</span>
+                            </Label>
+                            <div className="grid grid-cols-2 gap-4 mt-1">
+
+                              {/* PE para Materializar */}
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium tracking-wider text-primary-600 block">
+                                  PE para Materializar
+                                </Label>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    className="w-full rounded-xl border-primary-300 bg-primary-50 px-4 py-3 text-sm font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-300 focus:bg-white transition-all duration-300 ease-in-out hover:border-primary-400"
+                                    value={ent.replica.peInvocacao}
+                                    onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, peInvocacao: Math.max(0, parseInt(e.target.value, 10) || 0) } })}
+                                  />
+                                  <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+                                    <span className="text-primary-400 text-xs">PE</span>
+                                  </div>
+                                </div>
+                                <p className="mt-1 text-xs text-primary-500">
+                                  Energia necessária para trazer o item do plano etéreo
+                                </p>
+                              </div>
+
+                              {/* PE de Sustentação */}
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium tracking-wider text-primary-600 block">
+                                  PE de Sustentação (por turno)
+                                </Label>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    className="w-full rounded-xl border-primary-300 bg-primary-50 px-4 py-3 text-sm font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-300 focus:bg-white transition-all duration-300 ease-in-out hover:border-primary-400"
+                                    value={ent.replica.peSustentacao}
+                                    onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, peSustentacao: Math.max(0, parseInt(e.target.value, 10) || 0) } })}
+                                  />
+                                  <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+                                    <span className="text-primary-400 text-xs">PE/turno</span>
+                                  </div>
+                                </div>
+                                <p className="mt-1 text-xs text-primary-500">
+                                  Custo para manter o item materializado a cada turno
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Opções Avançadas Section */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium tracking-wider text-primary-700 block flex items-start space-x-2">
+                              Opções Avançadas
+                            </Label>
+                            <div className="grid grid-cols-2 gap-3 mt-2">
+
+                              {/* Desintegrar ao Soltar */}
+                              <div className="flex items-center space-x-3">
+                                <div className="flex-shrink-0">
+                                  <div className="h-4 w-4 rounded-full border-2 border-primary-300 bg-primary-50"
+                                    style={{
+                                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 cursor-pointer appearance-none"
+                                      checked={ent.replica.desintegrarAoSoltar}
+                                      onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, desintegrarAoSoltar: e.target.checked } })} />
+                                    </div>
+                                </div>
+                                <div className="flex-1 space-x-2">
+                                  <div className="text-sm font-medium text-primary-700">
+                                    Desintegrar ao soltar
+                                  </div>
+                                  <div className="text-xs text-primary-500">
+                                    O item desaparece quando o personagem solta a arma
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Cobrar Sustentação */}
+                              <div className="flex items-center space-x-3">
+                                <div className="flex-shrink-0">
+                                  <div className="h-4 w-4 rounded-full border-2 border-primary-300 bg-primary-50"
+                                    style={{
+                                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 cursor-pointer appearance-none"
+                                      checked={ent.replica.cobrarPorRodada}
+                                      onChange={(e) => setEnt({ ...ent, replica: { ...ent.replica!, cobrarPorRodada: e.target.checked } })} />
+                                    </div>
+                                </div>
+                                <div className="flex-1 space-x-2">
+                                  <div className="text-sm font-medium text-primary-700">
+                                    Cobrar sustentação a cada turno
+                                  </div>
+                                  <div className="text-xs text-primary-500">
+                                    O custo de sustentação é aplicado automaticamente no início do turno
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Preview Visual */}
+                          <div className="mt-4 pt-4 border-t border-primary-200">
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium tracking-wider text-primary-700 block">
+                                Estimativa de Custo Total
+                              </Label>
+                              <div className="flex items-center space-x-3 text-sm font-medium text-primary-600">
+                                <div className="h-3 w-3 rounded-full bg-primary-400 animate-pulse" />
+                                <span>
+                                  Custo por invocação: <strong className="text-primary-800">{ent.replica.peInvocacao}</strong> PE +
+                                  Custo por turno: <strong className="text-primary-800">{ent.replica.peSustentacao}</strong> PE =
+                                  <strong className="text-primary-800 font-bold">{ent.replica.peInvocacao + ent.replica.peSustentacao}</strong> PE (primeiro turno)
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
-                  </div>
+                </div>
                 )}
-                {ent.custos.map((c, i) => (
-                  <div key={i} className="rounded-md border border-border/60 p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Select value={c.caminhoRecurso} onValueChange={(v) => {
-                        const nx = [...ent.custos]; nx[i] = { ...c, caminhoRecurso: v }; setEnt({ ...ent, custos: nx });
-                      }}>
-                        <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {caminhosNum.map((o) => (
-                            <SelectItem key={o.caminho} value={o.caminho}>{o.rotulo}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button size="sm" variant="ghost" onClick={() => {
-                        setEnt({ ...ent, custos: ent.custos.filter((_, j) => j !== i) });
-                      }}>
-                        <Trash2 className="h-4 w-4 text-destructive/70" />
-                      </Button>
+
+                {/* Custom Costs Section */}
+                <div className="animate-in fade-in"
+                  style={{
+                    animationDelay: '300ms'
+                  }}
+                >
+                  <div className="mb-4">
+                    <Label className="text-sm font-medium tracking-wider text-foreground mb-2 block flex items-start space-x-2">
+                      Custos Personalizados
+                      <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012 2h2a2 2 0 012-2M9 5a2 2 0 012-2h2.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2z"></path>
+                        </svg>
+                      </Label>
                     </div>
-                    <SmartDropdown
-                      valor={c.valor}
-                      onChange={(v) => {
-                        const nx = [...ent.custos]; nx[i] = { ...c, valor: v }; setEnt({ ...ent, custos: nx });
-                      }}
-                      rotulo="Quantidade"
-                    />
+
+                    <div className="space-y-3">
+                      {ent.custos.length > 0 ? (
+                        <>
+                          {ent.custos.map((c, i) => (
+                            <div key={i} className="relative rounded-xl border border-foreground/20 bg-background/50 p-4 space-y-3 animate-in fade-in"
+                              style={{
+                                animationDelay: `${i * 100}ms`,
+                                transition: 'all 0.3s ease',
+                                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)';
+                              }}
+                            >
+                              <div className="flex items-start justify-between w-full space-x-3">
+                                <div className="flex-shrink-0 h-8 w-8 rounded-xl bg-foreground/5 flex items-center justify-center">
+                                  <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M12 8c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0 12c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0-6c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2z"></path>
+                                    </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="relative">
+                                    <Select
+                                      value={c.caminhoRecurso}
+                                      onValueChange={(v) => {
+                                        const nx = [...ent.custos]; nx[i] = { ...c, caminhoRecurso: v }; setEnt({ ...ent, custos: nx });
+                                      }}
+                                    >
+                                      <SelectTrigger className="flex items-center w-full justify-between">
+                                        <SelectValue className="text-foreground" />
+                                        <svg className="h-3 w-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                            d="M19 9l-7 7-7-7"></path>
+                                          </svg>
+                                      </SelectTrigger>
+                                      <SelectContent className="z-50 mt-1 w-full rounded-xl border-foreground/20 bg-background/50 py-1 text-sm font-medium shadow-lg ring-1 ring-foreground/100"
+                                        style={{
+                                          animation: 'fade-up 200ms ease-in-out',
+                                          animationFillMode: 'forwards'
+                                        }}
+                                      >
+                                        {caminhosNum.map((o) => (
+                                          <SelectItem
+                                            key={o.caminho}
+                                            className="flex items-center px-3 py-2 text-foreground cursor-pointer hover:bg-foreground/10 transition-colors duration-200"
+                                            value={o.caminho}
+                                          >
+                                            <div className="flex-1">{o.rotulo}</div>
+                                            <div className="text-xs text-muted-foreground flex-1 text-right">({o.caminho})</div>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-muted-foreground text-xs">
+                                      📊
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex-shrink-0">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 rounded-xl border-destructive/20 bg-destructive/5 text-destructive/60 hover:bg-destructive/100 hover:text-destructive/0 transition-all duration-300 ease-in-out transform hover:-rotate-1"
+                                    onClick={() => {
+                                      setEnt({ ...ent, custos: ent.custos.filter((_, j) => j !== i) });
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="relative mt-2">
+                                <SmartDropdown
+                                  valor={c.valor}
+                                  onChange={(v) => {
+                                    const nx = [...ent.custos]; nx[i] = { ...c, valor: v }; setEnt({ ...ent, custos: nx });
+                                  }}
+                                  rotulo="Quantidade"
+                                />
+                                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-muted-foreground text-xs">
+                                  #
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Empty State */}
+                          {ent.custos.length === 0 && (
+                            <div className="text-center py-8">
+                              <div className="flex items-center justify-center mb-3">
+                                <div className="h-10 w-10 rounded-full bg-muted/20 flex items-center justify-center">
+                                  <svg className="h-5 w-5 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M12 8c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0 12c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0-6c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2z"></path>
+                                    </svg>
+                                  </div>
+                              </div>
+                              <p className="text-sm text-muted-foreground/60 max-w-xl">
+                                Nenhum custo personalizado adicionado. Os custos personalizados permitem que você defina recursos adicionais que são consumidos quando o item é usado ou ativado.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-center py-8">
+                          <div className="flex items-center justify-center mb-3">
+                            <div className="h-10 w-10 rounded-full bg-muted/20 flex items-center justify-center">
+                              <svg className="h-5 w-5 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M12 8c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0 12c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zm0-6c0 1.105-0.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2z"></path>
+                                </svg>
+                              </div>
+                          </div>
+                          <p className="text-sm text-muted-foreground/60 max-w-xl">
+                            Nenhum custo personalizado adicionado. Os custos personalizados permitem que você defina recursos adicionais que são consumidos quando o item é usado ou ativado.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ))}
-                <Button size="sm" variant="outline" onClick={() => {
-                  setEnt({ ...ent, custos: [...ent.custos, { caminhoRecurso: 'status.energiaAmaldicoada.atual', valor: { tipo: 'fixo', valor: 1 } }] });
-                }}>
-                  <Plus className="h-4 w-4 mr-1" /> Adicionar Custo
-                </Button>
+
+                  <div className="mt-4">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full flex items-center justify-center space-x-2 text-sm font-medium transition-all duration-300 ease-in-out hover:bg-muted/50"
+                      onClick={() => {
+                        setEnt({ ...ent, custos: [...ent.custos, { caminhoRecurso: 'status.energiaAmaldicoada.atual', valor: { tipo: 'fixo', valor: 1 } }] });
+                      }}
+                    >
+                      <Plus className="h-4 w-4" /> Adicionar Custo Personalizado
+                      <span className="text-xs">Clique para adicionar um novo recurso de custo</span>
+                    </Button>
+                  </div>
               </TabsContent>
 
               {/* DURAÇÃO */}

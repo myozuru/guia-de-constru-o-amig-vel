@@ -13,6 +13,8 @@ import { INVOCACAO_SCHEMA_VERSION } from '@/lib/invocacoes/schema';
 import { definirAutomacaoInvocacao, despacharAutonomiasInvocacao } from '@/lib/controlador/autonomia';
 import type { EntidadeOmni } from '@/lib/omni/tipos';
 import type { CadeiaOmni } from '@/lib/omni/cadeiaEventos';
+import { propostasAutonomia, responderPropostaAutonomia, cancelarPropostaAutonomia } from '@/lib/controlador/confirmacaoAutonomia';
+import { executarAtaqueAutonomoInvocacao } from '@/lib/controlador/mapa';
 import {
   avaliarCondicaoAutonomia,
   caminhoSeguro,
@@ -114,12 +116,67 @@ function prepararAutomacao(): { tokenId: string; custoPeDono: number } {
 }
 
 beforeEach(() => {
+  for (const id of propostasAutonomia.keys()) cancelarPropostaAutonomia(id);
   useCombatStore.setState({ inCombat: false, currentTurnIndex: 0, initiativeOrder: [] } as never);
   useOmniEntidadesStore.setState({ entidades: {} });
   useLogStore.getState().clearLogs();
 });
 
 describe('autonomia de Shikigami sem serviços externos', () => {
+  it('trocar de perfil cancela a proposta e libera a fila sem executar tarefas enfileiradas', async () => {
+    prepararAutomacao();
+    const contexto = { usuarioId: 'dono', alvoId: 'inimigo', cena: {}, dano: {} };
+    const primeiro = despacharAutonomiasInvocacao('aoCausarDano', contexto, cadeia());
+    await vi.waitFor(() => expect(propostasAutonomia.size).toBe(1));
+    const idAntigo = [...propostasAutonomia.keys()][0];
+    const segundo = despacharAutonomiasInvocacao('aoCausarDano', contexto, cadeia());
+    comoTela({ profileId: 'perfil-alheio', role: 'PLAYER' });
+    await Promise.all([primeiro, segundo]);
+    expect(propostasAutonomia.size).toBe(0);
+    expect(responderPropostaAutonomia(idAntigo, true)).toBe(false);
+    expect(pegarFicha('dono').instanciasInvocacao?.[0]).toMatchObject({ economiaAcoes: { acaoComum: { atual: 1 } } });
+    expect(pegarFicha('dono').instanciasInvocacao?.[0].usosAutomacaoRodada).toBeUndefined();
+    comoTela({ profileId: 'perfil-dono', role: 'PLAYER' });
+    const novo = despacharAutonomiasInvocacao('aoCausarDano', contexto, cadeia());
+    await vi.waitFor(() => expect(propostasAutonomia.size).toBe(1));
+    responderPropostaAutonomia([...propostasAutonomia.keys()][0], true);
+    await novo;
+    expect(pegarFicha('dono').instanciasInvocacao?.[0].usosAutomacaoRodada?.total).toBe(1);
+  });
+  it.each(['recusar', 'cancelar', 'revogar', 'alvo', 'turno'] as const)('não consome recursos ao %s uma proposta', async modo => {
+    prepararAutomacao();
+    const despacho = despacharAutonomiasInvocacao('aoCausarDano', { usuarioId: 'dono', alvoId: 'inimigo', cena: {}, dano: {} }, cadeia());
+    await vi.waitFor(() => expect(propostasAutonomia.size).toBe(1));
+    const id = [...propostasAutonomia.keys()][0];
+    if (modo === 'recusar') responderPropostaAutonomia(id, false);
+    if (modo === 'cancelar') cancelarPropostaAutonomia(id);
+    if (modo === 'revogar') {
+      const dono = pegarFicha('dono');
+      useCharacterStore.getState().updateCharacter('dono', { invocacoesConhecidas: dono.invocacoesConhecidas!.map(m => ({ ...m, aprovacaoMestre: 'rejeitada' })) });
+      responderPropostaAutonomia(id, true);
+    }
+    if (modo === 'alvo') {
+      const token = Object.values(useMapStore.getState().entities).find(t => t.characterId === 'inimigo')!;
+      useMapStore.getState().updateEntity(token.id, { x: 10000 });
+      responderPropostaAutonomia(id, true);
+    }
+    if (modo === 'turno') useCombatStore.setState({ round: 2 });
+    await despacho;
+    expect(pegarFicha('dono').instanciasInvocacao?.[0].economiaAcoes?.acaoComum?.atual).toBe(1);
+    expect(pegarFicha('dono').instanciasInvocacao?.[0].usosAutomacaoRodada).toBeUndefined();
+    expect(pegarFicha('dono').peCurrent).toBe(10);
+  });
+
+  it('bloqueia chamada direta ao executor sem aceite e não solicita em tela de outro perfil', async () => {
+    prepararAutomacao();
+    expect((await executarAtaqueAutonomoInvocacao('dono', 'shiki-1', 'acao-local', ['inimigo'], {
+      instanciaId: 'instancia-1', requestId: 'forjado',
+    })).ok).toBe(false);
+    comoTela({ profileId: 'perfil-alheio', role: 'PLAYER' });
+    await despacharAutonomiasInvocacao('aoCausarDano', { usuarioId: 'dono', alvoId: 'inimigo', cena: {}, dano: {} }, cadeia());
+    expect(propostasAutonomia.size).toBe(0);
+    expect(pegarFicha('dono').instanciasInvocacao?.[0].economiaAcoes?.acaoComum?.atual).toBe(1);
+  });
   it('executa uma regra no máximo uma vez dentro da cadeia OMNI e permite nova cadeia', () => {
     const primeira = cadeia();
     const segunda = cadeia();
@@ -175,7 +232,13 @@ describe('autonomia de Shikigami sem serviços externos', () => {
     const contexto = { usuarioId: 'dono', alvoId: 'inimigo', cena: {}, dano: {} };
     const primeiraCadeia = cadeia();
 
-    await despacharAutonomiasInvocacao('aoCausarDano', contexto, primeiraCadeia);
+    const despacho = despacharAutonomiasInvocacao('aoCausarDano', contexto, primeiraCadeia);
+    await vi.waitFor(() => expect(propostasAutonomia.size).toBe(1));
+    expect(pegarFicha('dono').instanciasInvocacao?.[0].economiaAcoes?.acaoComum?.atual).toBe(1);
+    const pedido = [...propostasAutonomia.keys()][0];
+    expect(responderPropostaAutonomia(pedido, true)).toBe(true);
+    expect(responderPropostaAutonomia(pedido, true)).toBe(false);
+    await despacho;
     const aposPrimeiroGatilho = pegarFicha('dono');
     expect(aposPrimeiroGatilho.instanciasInvocacao?.[0]).toMatchObject({
       economiaAcoes: { acaoComum: { atual: 0, maximo: 1 } },

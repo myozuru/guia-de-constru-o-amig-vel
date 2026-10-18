@@ -6,7 +6,7 @@ Recriar no workspace atual o aplicativo completo contido no ZIP, mantendo sua ap
 ## Implementação
 - Migrar todos os componentes, estados, regras, testes e arquivos visuais/sonoros necessários do pacote.
 - Adaptar a entrada do aplicativo para a estrutura atual do Lovable, mantendo a experiência como uma única tela interativa.
-- Preservar a abertura “The Promisse”, escolha de Mestre/Jogador, fichas e todos os módulos disponíveis por perfil.
+- Preservar a abertura “The Saint Promisse”, escolha de Mestre/Jogador, fichas e todos os módulos disponíveis por perfil.
 - Converter o tema místico existente para o sistema visual atual sem alterar sua identidade.
 - Manter armazenamento local e o modo offline seguro, sem copiar credenciais, usuários ou dados do projeto original.
 - Instalar apenas as bibliotecas já exigidas pelo código importado.

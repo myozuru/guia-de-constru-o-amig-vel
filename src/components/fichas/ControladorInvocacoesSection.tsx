@@ -1,6 +1,6 @@
 import { InvocationDisclosure } from "@/components/invocacoes/InvocationDisclosure";
 import { InvocationSelect } from "@/components/invocacoes/InvocationSelect";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Character } from '@/types';
 import { useCharacterStore } from '@/stores/useCharacterStore';
 import { useRoleStore } from '@/stores/useRoleStore';
@@ -11,7 +11,7 @@ import { validarIntermediarioInvocacao } from '@/lib/controlador/intermediario';
 import { invocarControladores, invocarHordaControlador, recolherInvocacao, limparInvocacoesDerrotadas, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, comandarSegurarSapo, escaparInvocacaoAgarrada, rolarPericiaInvocacao, type DirecaoInvocacao, type PericiaFugaSapo } from '@/lib/controlador/mapa';
 import { limiteInvocacoesConhecidas, limiteAtivasPersonagem, validarCatalogoControlador, type InvocacaoControlador, type TipoInvocacaoControlador } from '@/lib/controlador/tipos';
 import { podeUsarVersaoAprovada } from '@/lib/controlador/aprovacao';
-import { carregarAssetFicha } from '@/lib/controlador/assetFicha';
+import { carregarAssetFicha, salvarAssetFicha } from '@/lib/controlador/assetFicha';
 import { formatarSegundosTempoInvocacao, tempoAdicionalEmSegundos } from '@/lib/controlador/tempo';
 import { assetCache } from '@/components/mapa/assetCache';
 import { decidirAprovacaoInvocacao, decidirAprovacaoLegadaInvocacao, submeterAprovacaoInvocacao } from '@/lib/controlador/aprovacao.functions';
@@ -21,7 +21,7 @@ import { bonusPericiaCaracteristicas } from '@/lib/controlador/passivas';
 import { definirAutomacaoInvocacao } from '@/lib/controlador/autonomia';
 import { useProfileStore } from '@/stores/useProfileStore';
 import { calcularHorda } from '@/lib/controlador/hordas';
-import { DEZ_SOMBRAS_FORMAS_DERIVADAS as DEZ_SOMBRAS_FORMAS_REFERENCIA, HABILIDADES_TECNICA_DEZ_SOMBRAS, criarPacoteDezSombras } from '@/lib/controlador/dezSombras';
+import { DEZ_SOMBRAS_FORMAS_DERIVADAS as DEZ_SOMBRAS_FORMAS_REFERENCIA, DEZ_SOMBRAS_MODELOS, HABILIDADES_TECNICA_DEZ_SOMBRAS, criarPacoteDezSombras } from '@/lib/controlador/dezSombras';
 import { DEZ_SOMBRAS_FORMAS_DERIVADAS, criarFormasDerivadasDezSombras } from '@/lib/controlador/dezSombrasDerivadas';
 
 type Fonte = { id: string; nome: string; tipo: 'grimorio' | 'omni'; hp: number; defesa: number; deslocamento: number; porte: InvocacaoControlador['porte']; acoes: InvocacaoControlador['acoes'] };
@@ -39,9 +39,23 @@ function criaturasGrimorio(): Fonte[] {
       defesa: Math.max(0, numero(c.defense ?? c.defesa ?? c.ca, 10)),
       deslocamento: Math.max(0, numero(c.speed ?? c.deslocamento ?? c.movement, 9)),
       porte: (['Pequeno', 'Médio', 'Grande'].includes(c.size) ? c.size : 'Médio') as InvocacaoControlador['porte'],
-      acoes: Array.isArray(c.actions) ? c.actions.map((a: { id?: string; name?: string; damage?: string }, i: number) => ({
-        id: String(a.id || i), nome: String(a.name || 'Ação'), tipo: 'ataque' as const, dano: a.damage ? String(a.damage) : undefined,
-      })) : [],
+      acoes: Array.isArray(c.actions) ? c.actions.map((a: unknown, i: number) => {
+        if (typeof a === 'object' && a !== null) {
+          return {
+            id: String((a as any).id || i),
+            nome: String((a as any).name || 'Ação'),
+            tipo: 'ataque' as const,
+            dano: (a as any).damage ? String((a as any).damage) : undefined,
+          };
+        }
+        // Fallback for non-object actions
+        return {
+          id: String(i),
+          nome: 'Ação',
+          tipo: 'ataque' as const,
+          dano: undefined,
+        };
+      }) : [],
     }));
   } catch { return []; }
 }
@@ -64,6 +78,9 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
   const [busyAprovacao, setBusyAprovacao] = useState(false);
   const [carregandoArteId, setCarregandoArteId] = useState<string | null>(null);
   const [assetsTick, setAssetsTick] = useState(0);
+  const [imagensPerfisPreProntos, setImagensPerfisPreProntos] = useState<Record<string, { arquivo: File; url: string }>>({});
+  const [salvandoImagemPerfilId, setSalvandoImagemPerfilId] = useState<string | null>(null);
+  const urlsImagensPerfisPreProntos = useRef<Record<string, string>>({});
   const [motivosRejeicao, setMotivosRejeicao] = useState<Record<string, string>>({});
   const [motivosOverride, setMotivosOverride] = useState<Record<string, string>>({});
   const [direcao, setDirecao] = useState<DirecaoInvocacao>('leste');
@@ -77,6 +94,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
   const [alvosAtaqueMultiplo, setAlvosAtaqueMultiplo] = useState<Record<string, string[]>>({});
   const [busyAtaque, setBusyAtaque] = useState(false);
   const [busySegurar, setBusySegurar] = useState(false);
+  const [membrosSapoVivos, setMembrosSapoVivos] = useState<Record<string, string>>({});
   const [busyFugaInvocacao, setBusyFugaInvocacao] = useState(false);
   const [alvosSuporte, setAlvosSuporte] = useState<Record<string, string[]>>({});
   const [busySuporte, setBusySuporte] = useState(false);
@@ -95,6 +113,11 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
   const [periciasSelecionadas, setPericiasSelecionadas] = useState<Record<string, string>>({});
   const [busyPericia, setBusyPericia] = useState<Record<string, boolean>>({});
   const [confirmandoPerdaDerrota, setConfirmandoPerdaDerrota] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    Object.values(urlsImagensPerfisPreProntos.current).forEach(url => URL.revokeObjectURL(url));
+    urlsImagensPerfisPreProntos.current = {};
+  }, []);
 
   const entities = useMapStore(s => s.entities);
   const ativos = Object.values(entities).filter(e => e.ownerCharId === character.id && !!e.invocationId);
@@ -186,8 +209,20 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
     if (!alvoId || busySegurar) return;
     setBusySegurar(true); setErro(''); setMensagem('');
     try {
-      const resultado = await comandarSegurarSapo(character.id, invocacaoId, alvoId);
+      const invocacao = catalogo.find(item => item.id === invocacaoId);
+      const quantidade = membrosSapoVivos[invocacaoId] ?? '';
+      const opcoes = invocacao?.subcategoria === 'dez-sombras:abismo-desconhecido-do-poco' && quantidade.trim()
+        ? { membrosSapoVivos: Number(quantidade) }
+        : undefined;
+      const resultado = await comandarSegurarSapo(character.id, invocacaoId, alvoId, opcoes);
       if (!resultado.ok) { setErro(resultado.motivo); return; }
+      if (invocacao?.subcategoria === 'dez-sombras:abismo-desconhecido-do-poco') {
+        setMembrosSapoVivos(atual => {
+          const proximo = { ...atual };
+          delete proximo[invocacaoId];
+          return proximo;
+        });
+      }
       setMensagem(resultado.sucesso
         ? resultado.aplicouCondicao ? resultado.nomeAlvo + ' ficou Agarrado.' : 'O alvo venceu a disputa, mas a condição foi bloqueada.'
         : 'Segurar falhou: o alvo resistiu.');
@@ -284,14 +319,21 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
     setConfirmandoPerdaDerrota(null);
   };
   const [libraryQuery, setLibraryQuery] = useState('');
-  const [incluirTigreFunebre, setIncluirTigreFunebre] = useState(true);
+  const [incluirTigreFunebre, setIncluirTigreFunebre] = useState(false);
   const catalogo = character.invocacoesConhecidas ?? [];
   const temTecnicaDezSombras = (character.tecnicaAmaldicoada ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().includes('dez sombras');
-  const importarDezSombras = () => {
+  const chaveImagemParaFichaDezSombras = (ficha: InvocacaoControlador) => {
+    const idPerfil = ficha.subcategoria?.replace(/^dez-sombras:/, '');
+    if (!idPerfil || ficha.pacoteRegras !== 'dez-sombras') return null;
+    if (ficha.formaDerivada) return `derivada:${idPerfil}`;
+    return `${ficha.opcionalHomebrew ? 'homebrew' : 'base'}:${idPerfil}`;
+  };
+  const importarDezSombras = async () => {
     if (!temTecnicaDezSombras) {
       setErro('Cadastre a técnica amaldiçoada Dez Sombras no personagem antes de importar este pacote.');
       return;
     }
+    if (salvandoImagemPerfilId) return;
     const existentes = new Set(catalogo.filter(item => item.pacoteRegras === 'dez-sombras').map(item => item.subcategoria));
     const fichasBase = criarPacoteDezSombras(character.id, incluirTigreFunebre);
     const fichasDerivadas = criarFormasDerivadasDezSombras(character.id);
@@ -300,15 +342,150 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
       setMensagem('As fichas selecionadas das Dez Sombras já estão na biblioteca.');
       return;
     }
+    const semImagem = novos.filter(item => {
+      const chaveImagem = chaveImagemParaFichaDezSombras(item);
+      return !chaveImagem || !imagensPerfisPreProntos[chaveImagem];
+    });
+    if (semImagem.length) {
+      setErro(`Escolha uma imagem em cada cartão pendente antes da importação em lote: ${semImagem.map(item => item.nome).join(', ')}.`);
+      setMensagem('');
+      return;
+    }
+    setSalvandoImagemPerfilId('lote');
+    setErro('');
+    setMensagem('');
+    try {
+      const novosComImagem = await Promise.all(novos.map(async ficha => {
+        const chaveImagem = chaveImagemParaFichaDezSombras(ficha)!;
+        const imagem = imagensPerfisPreProntos[chaveImagem];
+        const imagemAssetId = await salvarAssetFicha(imagem.arquivo);
+        return { ...ficha, imagemAssetId, imagemAltText: ficha.nome };
+      }));
+      updateCharacter(character.id, {
+        invocacoesConhecidas: [...catalogo, ...novosComImagem],
+        limiteInvocacoesConhecidas: max ?? undefined,
+        limiteInvocacoesAtivas: ativas,
+      });
+      setAssetsTick(tick => tick + 1);
+      novos.forEach(ficha => {
+        const chaveImagem = chaveImagemParaFichaDezSombras(ficha);
+        if (chaveImagem) limparImagemPerfilPrePronto(chaveImagem);
+      });
+      const quantidadeBase = novos.length - novos.filter(item => item.formaDerivada).length;
+      const quantidadeDerivada = novos.filter(item => item.formaDerivada).length;
+      setMensagem(`${quantidadeBase} indivíduo(s)-base e ${quantidadeDerivada} forma(s) derivada(s) adicionados com imagem. Cães iniciais vêm domados; as demais fichas ficam bloqueadas até ritual ou confirmação manual do Mestre.`);
+    } catch (error) {
+      setErro(error instanceof Error ? `Não foi possível guardar as imagens: ${error.message}` : 'Não foi possível guardar as imagens das fichas.');
+    } finally {
+      setSalvandoImagemPerfilId(null);
+    }
+  };
+  const adicionarFichaDezSombras = (ficha: InvocacaoControlador | undefined) => {
+    if (!temTecnicaDezSombras) {
+      setErro('Cadastre a técnica amaldiçoada Dez Sombras no personagem antes de adicionar fichas.');
+      return;
+    }
+    if (!ficha) {
+      setErro('Não foi possível localizar este perfil no catálogo das Dez Sombras.');
+      return;
+    }
+    const catalogoAtual = useCharacterStore.getState().characters.find(item => item.id === character.id)?.invocacoesConhecidas ?? catalogo;
+    if (catalogoAtual.some(item => item.pacoteRegras === 'dez-sombras' && item.subcategoria === ficha.subcategoria)) {
+      setMensagem(ficha.nome + ' já está na biblioteca.');
+      return;
+    }
     updateCharacter(character.id, {
-      invocacoesConhecidas: [...catalogo, ...novos],
+      invocacoesConhecidas: [...catalogoAtual, ficha],
       limiteInvocacoesConhecidas: max ?? undefined,
       limiteInvocacoesAtivas: ativas,
     });
     setErro('');
-    const quantidadeBase = novos.filter(item => !item.formaDerivada).length;
-    const quantidadeDerivada = novos.filter(item => item.formaDerivada).length;
-    setMensagem(`${quantidadeBase} indivíduo(s)-base e ${quantidadeDerivada} forma(s) derivada(s) adicionados. Cães iniciais vêm domados; as demais fichas ficam bloqueadas até ritual ou confirmação manual do Mestre.`);
+    setMensagem(ficha.nome + ' foi adicionada à biblioteca.');
+  };
+  const selecionarImagemPerfilPrePronto = (chave: string, arquivo: File) => {
+    if (!arquivo.type.startsWith('image/')) {
+      setErro('Escolha um arquivo de imagem para este perfil.');
+      return;
+    }
+    if (arquivo.size > 12 * 1024 * 1024) {
+      setErro('A imagem precisa ter no máximo 12 MB.');
+      return;
+    }
+    const urlAnterior = urlsImagensPerfisPreProntos.current[chave];
+    if (urlAnterior) URL.revokeObjectURL(urlAnterior);
+    const url = URL.createObjectURL(arquivo);
+    urlsImagensPerfisPreProntos.current[chave] = url;
+    setImagensPerfisPreProntos(atual => ({ ...atual, [chave]: { arquivo, url } }));
+    setErro('');
+    setMensagem('');
+  };
+  const limparImagemPerfilPrePronto = (chave: string) => {
+    const url = urlsImagensPerfisPreProntos.current[chave];
+    if (url) URL.revokeObjectURL(url);
+    delete urlsImagensPerfisPreProntos.current[chave];
+    setImagensPerfisPreProntos(atual => {
+      const proximo = { ...atual };
+      delete proximo[chave];
+      return proximo;
+    });
+  };
+  const renderSeletorImagemPerfilPrePronto = (chave: string, nomePerfil: string) => {
+    const imagem = imagensPerfisPreProntos[chave];
+    return (
+      <div className="inv-profile-art-picker" data-selected={Boolean(imagem)}>
+        <div className="inv-profile-art-frame">
+          {imagem
+            ? <img src={imagem.url} alt={`Prévia da imagem de ${nomePerfil}`} />
+            : <span aria-hidden="true">◇</span>}
+        </div>
+        <label className="inv-profile-image-select">
+          <input
+            type="file"
+            accept="image/*"
+            aria-label={`Selecionar imagem para ${nomePerfil}`}
+            aria-required="true"
+            disabled={Boolean(salvandoImagemPerfilId)}
+            onChange={event => {
+              const arquivo = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (arquivo) selecionarImagemPerfilPrePronto(chave, arquivo);
+            }}
+          />
+          <span aria-hidden="true">{imagem ? '↻' : '+'}</span>
+          {imagem ? 'Trocar imagem' : 'Escolher imagem'}
+        </label>
+        <span className="inv-profile-image-hint">{imagem ? 'Imagem pronta' : 'Imagem obrigatória'}</span>
+      </div>
+    );
+  };
+  const adicionarFichaPreProntaComImagem = async (
+    chaveImagem: string,
+    criarFicha: () => InvocacaoControlador | undefined,
+    nomeFicha: string,
+  ) => {
+    const imagem = imagensPerfisPreProntos[chaveImagem];
+    if (!imagem) {
+      setErro(`Selecione uma imagem para ${nomeFicha} antes de adicionar.`);
+      return;
+    }
+    const ficha = criarFicha();
+    if (!ficha) {
+      setErro(`Não foi possível localizar o perfil de ${nomeFicha}.`);
+      return;
+    }
+    setSalvandoImagemPerfilId(chaveImagem);
+    setErro('');
+    setMensagem('');
+    try {
+      const imagemAssetId = await salvarAssetFicha(imagem.arquivo);
+      adicionarFichaDezSombras({ ...ficha, imagemAssetId, imagemAltText: nomeFicha });
+      setAssetsTick(tick => tick + 1);
+      limparImagemPerfilPrePronto(chaveImagem);
+    } catch (error) {
+      setErro(error instanceof Error ? `Não foi possível guardar a imagem: ${error.message}` : 'Não foi possível guardar a imagem deste perfil.');
+    } finally {
+      setSalvandoImagemPerfilId(null);
+    }
   };
   const registrarRitualConcluido = (invocacaoId: string) => {
     if (!isMaster) return;
@@ -330,6 +507,19 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
     const principal = inv.imagemAssetId ? assetCache.get(inv.imagemAssetId) : null;
     const fallback = inv.imagemFallbackAssetId ? assetCache.get(inv.imagemFallbackAssetId) : null;
     return principal?.ready ? principal : fallback ?? principal;
+  };
+  const renderImagemPerfilExistente = (ficha: InvocacaoControlador, nomePerfil: string) => {
+    const arte = assetForFicha(ficha);
+    return (
+      <div className="inv-profile-art-picker" data-selected={Boolean(arte)}>
+        <div className="inv-profile-art-frame">
+          {arte
+            ? <img key={assetsTick} src={arte.url} alt={ficha.imagemAltText || nomePerfil} />
+            : <span aria-hidden="true">◇</span>}
+        </div>
+        <span className="inv-profile-image-hint">{arte ? 'Imagem vinculada' : 'Imagem ausente nesta ficha'}</span>
+      </div>
+    );
   };
   useEffect(() => {
     let mounted = true;
@@ -443,10 +633,19 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
     ...Object.values(entidades).filter(e => e.categoria !== 'condicao' && e.categoria !== 'voto').map(e => ({
       id: e.id, nome: e.nome, tipo: 'omni' as const,
       hp: 10, defesa: 10, deslocamento: 9, porte: 'Médio' as const,
-      acoes: (e.acoesAtivas ?? []).map(a => ({
-        id: a.id, nome: a.nome, tipo: 'habilidade' as const, alcanceM: a.alcanceM,
-        dano: a.dano, entidadeOmniId: e.id,
-      })),
+      acoes: (e.acoesAtivas ?? []).map(a => {
+        if (typeof a === 'object' && a !== null) {
+          return {
+            id: a.id, nome: a.nome, tipo: 'habilidade' as const, alcanceM: a.alcanceM,
+            dano: a.dano, entidadeOmniId: e.id,
+          };
+        }
+        // Fallback for non-object actions
+        return {
+          id: 'unknown', nome: 'Habilidade desconhecida', tipo: 'habilidade' as const, alcanceM: 0,
+          dano: undefined, entidadeOmniId: e.id,
+        };
+      }),
     })),
   ];
   const acoesDeAtaque = (inv: InvocacaoControlador) => inv.acoes.filter(a => a.tipo === 'ataque' || a.teste === 'ataque' || a.teste === 'resistencia');
@@ -655,42 +854,334 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
     setErro('');
   };
   return (
-    <div className="space-y-3 rounded-lg border border-border p-3 text-sm">
-      <div className="inv-toolbar"><div><p className="inv-eyebrow">Biblioteca do controlador</p><h2>Suas invocações</h2></div>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar ficha</button>}</div>
-      {controlador && <section className="inv-section space-y-2 rounded border border-border p-3" aria-label="Pacote Dez Sombras">
-        <strong>Pacote da técnica Dez Sombras</strong>
-        <p className="text-xs text-muted-foreground">O material disponível identifica nove indivíduos-base; as fontes do vault não identificam o décimo. O Tigre Fúnebre permanece uma opção homebrew especulativa e não preenche essa vaga. Este pacote também importa Abismo e Agito como formas derivadas separadas, sem contá-las como indivíduos-base. Os dois Cães iniciais já vêm domados; os demais indivíduos exigem ritual, e as formas derivadas exigem confirmação manual do Mestre. O alcance de posicionamento não é definido: configure-o em cada ficha. A esfera de 18 m do ritual não é tratada como alcance de invocação. Regra da campanha: cada Cão custa 2 PE; invocar o par custa 4 PE.</p>
-        <label className="flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={incluirTigreFunebre} onChange={event => setIncluirTigreFunebre(event.target.checked)} />
-          Incluir Tigre Fúnebre como opção homebrew especulativa
-        </label>
-        <button type="button" className="inv-primary disabled:opacity-50" disabled={!temTecnicaDezSombras} onClick={importarDezSombras}>
-          Importar fichas das Dez Sombras
-        </button>
-        {!temTecnicaDezSombras && <p className="text-xs text-muted-foreground">Cadastre primeiro “Dez Sombras” como técnica amaldiçoada do personagem.</p>}
-        <details className="rounded border border-border p-2">
-          <summary>Habilidades da técnica e formas derivadas</summary>
-          <div className="mt-2 space-y-3">
-            <div>
-              <strong className="text-xs">Técnica</strong>
-              <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
-                {HABILIDADES_TECNICA_DEZ_SOMBRAS.map(habilidade => <li key={habilidade.id}><strong>{habilidade.nome} - {habilidade.automacao === 'parcial' ? 'Parcial' : 'Manual'}</strong> - {habilidade.descricao}</li>)}
-              </ul>
+    <div className="inv-library-panel space-y-3 rounded-lg border border-border p-3 text-sm">
+      <div className="inv-toolbar"><div><p className="inv-eyebrow">Biblioteca de invocações</p><h2>Suas invocações</h2></div>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar ficha</button>}</div>
+      <section className="inv-section inv-package-panel" aria-label="Pacote Dez Sombras">
+        <div className="inv-package-top">
+          <div className="inv-package-intro">
+            <span className="inv-package-mark" aria-hidden="true">✦</span>
+            <div className="inv-package-copy">
+              <p className="inv-package-eyebrow">Pacote pré-pronto</p>
+              <h3>Dez Sombras</h3>
+              <p>Perfis-base, opção homebrew e formas derivadas para adicionar à biblioteca. Cada ficha precisa de uma imagem.</p>
             </div>
-            <div>
-              <strong className="text-xs">Formas derivadas (não são indivíduos adicionais na lista-base)</strong>
-              <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
-                {DEZ_SOMBRAS_FORMAS_REFERENCIA.map(forma => <li key={forma.id}><strong>{forma.nome} | p. {forma.pagina}</strong> - {forma.descricao}</li>)}
-                <li><strong>Fichas separadas importáveis:</strong> {DEZ_SOMBRAS_FORMAS_DERIVADAS.map(forma => forma.nome).join(' e ')}. Não contam como indivíduos-base e exigem confirmação manual dos requisitos pelo Mestre.</li>
-              </ul>
+          </div>
+          <div className="inv-package-import">
+            <button type="button" className="inv-primary inv-package-import-button" disabled={!temTecnicaDezSombras || Boolean(salvandoImagemPerfilId)} onClick={() => void importarDezSombras()}>
+              {salvandoImagemPerfilId === 'lote' ? 'Guardando imagens…' : 'Importar fichas'}
+            </button>
+            <p className="inv-package-bulk-help">Para importar em lote, escolha uma imagem em cada cartão pendente abaixo.</p>
+            {!temTecnicaDezSombras && <p className="inv-package-requirement" role="status">Cadastre “Dez Sombras” como técnica amaldiçoada para liberar a importação.</p>}
+          </div>
+        </div>
+        <div className="inv-package-tools">
+          <label className="inv-package-homebrew">
+            <input type="checkbox" checked={incluirTigreFunebre} onChange={event => setIncluirTigreFunebre(event.target.checked)} />
+            <span>Incluir Tigre Fúnebre</span>
+            <small>Opção homebrew especulativa</small>
+          </label>
+          <div className="inv-package-facts" aria-label="Conteúdo do pacote">
+            <span><strong>9</strong> indivíduos-base</span>
+            <span><strong>2</strong> formas derivadas</span>
+          </div>
+        </div>
+        <details className="inv-package-details">
+          <summary>Regras, habilidades e ressalvas</summary>
+          <div className="inv-package-details-content">
+            <p className="inv-package-reference-notes">O material disponível identifica nove indivíduos-base; as fontes do vault não identificam o décimo. O Tigre Fúnebre permanece uma opção homebrew especulativa e não preenche essa vaga. Este pacote também importa Abismo e Agito como formas derivadas separadas, sem contá-las como indivíduos-base. Os dois Cães iniciais já vêm domados; os demais indivíduos exigem ritual, e as formas derivadas exigem confirmação manual do Mestre. O alcance de posicionamento não é definido: configure-o em cada ficha. A esfera de 18 m do ritual não é tratada como alcance de invocação. Regra da campanha: cada Cão custa 2 PE; invocar o par custa 4 PE.</p>
+            <div className="inv-package-skills-grid">
+              <div>
+                <strong>Técnica</strong>
+                <ul>
+                  {HABILIDADES_TECNICA_DEZ_SOMBRAS.map(habilidade => <li key={habilidade.id}><strong>{habilidade.nome} — {habilidade.automacao === 'parcial' ? 'Parcial' : 'Manual'}</strong> — {habilidade.descricao}</li>)}
+                </ul>
+              </div>
+              <div>
+                <strong>Formas derivadas (não são indivíduos adicionais na lista-base)</strong>
+                <ul>
+                  {DEZ_SOMBRAS_FORMAS_REFERENCIA.map(forma => <li key={forma.id}><strong>{forma.nome} | p. {forma.pagina}</strong> — {forma.descricao}</li>)}
+                  <li><strong>Fichas separadas importáveis:</strong> {DEZ_SOMBRAS_FORMAS_DERIVADAS.map(forma => forma.nome).join(' e ')}. Não contam como indivíduos-base e exigem confirmação manual dos requisitos pelo Mestre.</li>
+                </ul>
+              </div>
             </div>
-            <p className="text-xs">Manual e Parcial indicam que a regra está visível, mas o motor não automatiza todos os efeitos. Lacunas da fonte permanecem explícitas.</p>
+            <p className="inv-package-automation-note">Manual e Parcial indicam que a regra está visível, mas o motor não automatiza todos os efeitos. Lacunas da fonte permanecem explícitas.</p>
           </div>
         </details>
-      </section>}
-      <label className="inv-field">Buscar na biblioteca<input type="search" value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} placeholder="Nome ou apelido" /></label>
-      {catalogo.length === 0 && <div className="inv-empty"><div className="inv-empty-icon" aria-hidden="true">◇</div><h3>Sua biblioteca começa aqui</h3><p>Crie a primeira ficha para organizar suas invocações e acompanhar a aprovação do Mestre.</p>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar primeira ficha</button>}</div>}
-      {catalogo.length > 0 && !catalogo.some(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.toLocaleLowerCase())) && <p role="status" className="inv-description">Nenhuma invocação corresponde à busca.</p>}
+      </section>
+
+      <section className="inv-individual-catalog" aria-labelledby="inv-individual-catalog-title">
+        <header className="inv-individual-heading">
+          <div className="inv-individual-mark" aria-hidden="true">✦</div>
+          <div className="inv-individual-heading-copy">
+            <p className="inv-catalog-kicker">Catálogo de referência</p>
+            <h3 id="inv-individual-catalog-title">Adicionar invocações individuais</h3>
+            <p>Escolha uma imagem para cada perfil antes de adicioná-lo. A prévia aparece no cartão e acompanha a ficha na biblioteca.</p>
+          </div>
+          <div className="inv-catalog-counter" aria-label="Nove perfis-base">
+            <strong>09</strong><span>perfis-base</span>
+          </div>
+        </header>
+
+        <div className="inv-profile-group">
+          <div className="inv-profile-group-heading">
+            <div className="inv-profile-group-title">
+              <span className="inv-profile-group-index" aria-hidden="true">01</span>
+              <div><p className="inv-catalog-kicker">Catálogo principal</p><h4>Indivíduos-base</h4></div>
+            </div>
+            <span className="inv-profile-group-count">9 perfis de referência</span>
+          </div>
+
+          <div className="inv-profile-grid">
+            {DEZ_SOMBRAS_MODELOS
+              .filter(perfil => !perfil.opcionalHomebrew) // Excluir homebrew
+              .map(perfil => {
+                const chaveImagem = `base:${perfil.id}`;
+                const imagemSelecionada = Boolean(imagensPerfisPreProntos[chaveImagem]);
+                const salvandoImagem = salvandoImagemPerfilId === chaveImagem;
+                const fichaExistente = catalogo.find(inv =>
+                  inv.subcategoria === `dez-sombras:${perfil.id}`
+                );
+                const isAlreadyInCatalog = Boolean(fichaExistente);
+                return (
+                  <article key={perfil.id} className="inv-profile-card" data-added={isAlreadyInCatalog} data-image-ready={imagemSelecionada}>
+                    <div className="inv-profile-card-top">
+                      {fichaExistente ? renderImagemPerfilExistente(fichaExistente, perfil.nome) : renderSeletorImagemPerfilPrePronto(chaveImagem, perfil.nome)}
+                      <div className="inv-profile-card-name">
+                        <span className="inv-profile-kind">Indivíduo-base</span>
+                        <h5>{perfil.nome}</h5>
+                      </div>
+                      <span className="inv-profile-page">p. {perfil.pagina}</span>
+                    </div>
+                    <div className="inv-profile-badges">
+                      <span className="inv-profile-grade">Grau {perfil.grau}</span>
+                      <span className="inv-profile-cost"><span aria-hidden="true">✦</span> {perfil.custoPE} PE</span>
+                    </div>
+                    <dl className="inv-profile-stats">
+                      <div><dt>PV</dt><dd>{perfil.hp + (perfil.bonusPVMaximo ?? 0)}</dd></div>
+                      <div><dt>Defesa</dt><dd>{perfil.defesa}</dd></div>
+                      <div><dt>Movimento</dt><dd>{perfil.deslocamentoM}<small> m</small></dd></div>
+                    </dl>
+                    <div className="inv-profile-actions">
+                      <div className="inv-profile-actions-heading">
+                        <span>Ações</span>
+                        <small>{perfil.acoes.length} {perfil.acoes.length === 1 ? 'ação' : 'ações'}</small>
+                      </div>
+                      <div className="inv-profile-action-list">
+                        {perfil.acoes.map((acao, index) => (
+                          <div key={index} className="inv-profile-action-row">
+                            <div className="inv-profile-action-main">
+                              <strong>{acao.nome}</strong>
+                              <span>
+                                {acao.tipo === 'ataque' ? (acao.dano ?? 'Ataque') :
+                                 acao.formulaCura ? acao.formulaCura + ' PV' :
+                                 acao.efeitoSuporte?.efeito || 'Habilidade'}
+                              </span>
+                            </div>
+                            {acao.statusAutomacao && (
+                              <span className="inv-profile-automation" data-state={acao.statusAutomacao}>
+                                {acao.statusAutomacao === 'executavel' ? 'Automático' :
+                                 acao.statusAutomacao === 'parcial' ? 'Parcial' : 'Manual'}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <footer className="inv-profile-card-footer">
+                      {isAlreadyInCatalog ? (
+                        <p className="inv-profile-added" role="status"><span aria-hidden="true">✓</span> Já está na biblioteca</p>
+                      ) : (
+                        <button
+                          type="button"
+                          className="inv-primary inv-profile-add"
+                          disabled={!temTecnicaDezSombras || !imagemSelecionada || Boolean(salvandoImagemPerfilId)}
+                          onClick={() => void adicionarFichaPreProntaComImagem(chaveImagem,
+                            () => criarPacoteDezSombras(character.id, incluirTigreFunebre).find(
+                              novo => novo.subcategoria === 'dez-sombras:' + perfil.id
+                            ),
+                            perfil.nome,
+                          )}
+                        >
+                          <span className="inv-profile-add-symbol" aria-hidden="true">+</span>
+                          {!temTecnicaDezSombras ? 'Técnica necessária' : salvandoImagem ? 'Guardando imagem…' : imagemSelecionada ? 'Adicionar à biblioteca' : 'Escolha uma imagem'}
+                        </button>
+                      )}
+                    </footer>
+                  </article>
+                );
+              })}
+          </div>
+        </div>
+
+        {incluirTigreFunebre && (
+          <div className="inv-profile-group inv-profile-group-homebrew">
+            <div className="inv-profile-group-heading">
+              <div className="inv-profile-group-title">
+                <span className="inv-profile-group-index" aria-hidden="true">H</span>
+                <div><p className="inv-catalog-kicker">Conteúdo especulativo</p><h4>Perfil homebrew</h4></div>
+              </div>
+              <span className="inv-profile-group-count">Opção extra</span>
+            </div>
+            <div className="inv-profile-grid">
+              {DEZ_SOMBRAS_MODELOS
+                .filter(perfil => perfil.opcionalHomebrew) // Apenas homebrew
+                .map(perfil => {
+                  const chaveImagem = `homebrew:${perfil.id}`;
+                  const imagemSelecionada = Boolean(imagensPerfisPreProntos[chaveImagem]);
+                  const salvandoImagem = salvandoImagemPerfilId === chaveImagem;
+                  const fichaExistente = catalogo.find(inv =>
+                    inv.subcategoria === `dez-sombras:${perfil.id}`
+                  );
+                  const isAlreadyInCatalog = Boolean(fichaExistente);
+                  return (
+                    <article key={perfil.id} className="inv-profile-card" data-variant="homebrew" data-added={isAlreadyInCatalog} data-image-ready={imagemSelecionada}>
+                      <div className="inv-profile-card-top">
+                        {fichaExistente ? renderImagemPerfilExistente(fichaExistente, perfil.nome) : renderSeletorImagemPerfilPrePronto(chaveImagem, perfil.nome)}
+                        <div className="inv-profile-card-name">
+                          <span className="inv-profile-kind">Opção homebrew</span>
+                          <h5>{perfil.nome}</h5>
+                        </div>
+                        <span className="inv-profile-page">p. {perfil.pagina}</span>
+                      </div>
+                      <div className="inv-profile-badges">
+                        <span className="inv-profile-grade">Grau {perfil.grau}</span>
+                        <span className="inv-profile-cost"><span aria-hidden="true">✦</span> {perfil.custoPE} PE</span>
+                      </div>
+                      <dl className="inv-profile-stats">
+                        <div><dt>PV</dt><dd>{perfil.hp + (perfil.bonusPVMaximo ?? 0)}</dd></div>
+                        <div><dt>Defesa</dt><dd>{perfil.defesa}</dd></div>
+                        <div><dt>Movimento</dt><dd>{perfil.deslocamentoM}<small> m</small></dd></div>
+                      </dl>
+                      <div className="inv-profile-actions">
+                        <div className="inv-profile-actions-heading">
+                          <span>Ações</span>
+                          <small>{perfil.acoes.length} {perfil.acoes.length === 1 ? 'ação' : 'ações'}</small>
+                        </div>
+                        <div className="inv-profile-action-list">
+                          {perfil.acoes.map((acao, index) => (
+                            <div key={index} className="inv-profile-action-row">
+                              <div className="inv-profile-action-main">
+                                <strong>{acao.nome}</strong>
+                                <span>
+                                  {acao.tipo === 'ataque' ? (acao.dano ?? 'Ataque') :
+                                   acao.formulaCura ? acao.formulaCura + ' PV' :
+                                   acao.efeitoSuporte?.efeito || 'Habilidade'}
+                                </span>
+                              </div>
+                              {acao.statusAutomacao && (
+                                <span className="inv-profile-automation" data-state={acao.statusAutomacao}>
+                                  {acao.statusAutomacao === 'executavel' ? 'Automático' :
+                                   acao.statusAutomacao === 'parcial' ? 'Parcial' : 'Manual'}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <footer className="inv-profile-card-footer">
+                        {isAlreadyInCatalog ? (
+                          <p className="inv-profile-added" role="status"><span aria-hidden="true">✓</span> Já está na biblioteca</p>
+                        ) : (
+                          <button
+                            type="button"
+                            className="inv-primary inv-profile-add"
+                            disabled={!temTecnicaDezSombras || !imagemSelecionada || Boolean(salvandoImagemPerfilId)}
+                            onClick={() => void adicionarFichaPreProntaComImagem(chaveImagem,
+                              () => criarPacoteDezSombras(character.id, incluirTigreFunebre).find(
+                                novo => novo.subcategoria === 'dez-sombras:' + perfil.id
+                              ),
+                              perfil.nome,
+                            )}
+                          >
+                            <span className="inv-profile-add-symbol" aria-hidden="true">+</span>
+                            {!temTecnicaDezSombras ? 'Técnica necessária' : salvandoImagem ? 'Guardando imagem…' : imagemSelecionada ? 'Adicionar à biblioteca' : 'Escolha uma imagem'}
+                          </button>
+                        )}
+                      </footer>
+                    </article>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
+        <div className="inv-profile-group inv-profile-group-derived">
+          <div className="inv-profile-group-heading">
+            <div className="inv-profile-group-title">
+              <span className="inv-profile-group-index" aria-hidden="true">02</span>
+              <div><p className="inv-catalog-kicker">Combinações e mudanças</p><h4>Formas derivadas</h4></div>
+            </div>
+            <span className="inv-profile-group-count">Catálogo separado</span>
+          </div>
+          {DEZ_SOMBRAS_FORMAS_REFERENCIA.filter(forma => forma.id === 'totalidade').map(forma => (
+            <article key={forma.id} className="inv-derived-note">
+              <div className="inv-derived-note-symbol" aria-hidden="true">↻</div>
+              <div className="inv-derived-note-copy">
+                <p className="inv-profile-kind">Transformação · sem ficha-base adicional</p>
+                <h5>{forma.nome}</h5>
+                <p>{forma.descricao}</p>
+                <p>A Totalidade transforma o Cão sobrevivente após o exorcismo permanente do outro. É uma transformação, não uma ficha-base separada; o catálogo não adiciona uma identidade extra.</p>
+              </div>
+            </article>
+          ))}
+          <div className="inv-profile-grid">
+            {DEZ_SOMBRAS_FORMAS_DERIVADAS.map(forma => {
+              const chaveImagem = `derivada:${forma.id}`;
+              const imagemSelecionada = Boolean(imagensPerfisPreProntos[chaveImagem]);
+              const salvandoImagem = salvandoImagemPerfilId === chaveImagem;
+              const fichaExistente = catalogo.find(inv =>
+                inv.subcategoria === `dez-sombras:${forma.id}`
+              );
+              const isAlreadyInCatalog = Boolean(fichaExistente);
+              return (
+                <article key={forma.id} className="inv-profile-card" data-variant="derived" data-added={isAlreadyInCatalog} data-image-ready={imagemSelecionada}>
+                  <div className="inv-profile-card-top">
+                    {fichaExistente ? renderImagemPerfilExistente(fichaExistente, forma.nome) : renderSeletorImagemPerfilPrePronto(chaveImagem, forma.nome)}
+                    <div className="inv-profile-card-name">
+                      <span className="inv-profile-kind">Forma derivada</span>
+                      <h5>{forma.nome}</h5>
+                    </div>
+                    <span className="inv-profile-page">p. {forma.pagina}</span>
+                  </div>
+                  <div className="inv-profile-origin">
+                    <span>Origem</span>
+                    <strong>{(DEZ_SOMBRAS_FORMAS_REFERENCIA.find(f => f.id === forma.id)?.derivaDe ?? []).map(id =>
+                      DEZ_SOMBRAS_MODELOS.find(p => p.id === id)?.nome || id
+                    ).join(' + ')}</strong>
+                  </div>
+                  <div className="inv-profile-description">
+                    <span>Descrição</span>
+                    <p>{forma.descricao}</p>
+                  </div>
+                  <footer className="inv-profile-card-footer">
+                    {isAlreadyInCatalog ? (
+                      <p className="inv-profile-added" role="status"><span aria-hidden="true">✓</span> Já está na biblioteca</p>
+                    ) : (
+                      <button
+                        type="button"
+                        className="inv-primary inv-profile-add"
+                        disabled={!temTecnicaDezSombras || !imagemSelecionada || Boolean(salvandoImagemPerfilId)}
+                        onClick={() => void adicionarFichaPreProntaComImagem(chaveImagem,
+                          () => criarFormasDerivadasDezSombras(character.id).find(
+                            nova => nova.subcategoria === 'dez-sombras:' + forma.id
+                          ),
+                          forma.nome,
+                        )}
+                      >
+                        <span className="inv-profile-add-symbol" aria-hidden="true">+</span>
+                        {!temTecnicaDezSombras ? 'Técnica necessária' : salvandoImagem ? 'Guardando imagem…' : imagemSelecionada ? 'Adicionar à biblioteca' : 'Escolha uma imagem'}
+                      </button>
+                    )}
+                  </footer>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+      <label className="inv-field">Buscar nas suas fichas<input type="search" value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} placeholder="Nome ou apelido nas fichas adicionadas" /></label>
+      {catalogo.length === 0 && !libraryQuery.trim() && <div className="inv-empty"><div className="inv-empty-icon" aria-hidden="true">◇</div><h3>Sua biblioteca ainda está vazia</h3><p>Esta busca filtra fichas já adicionadas. O catálogo de referência das Dez Sombras fica acima; adicionar fichas exige a técnica cadastrada no personagem.</p>{onCreateFicha && <button type="button" className="inv-primary" onClick={onCreateFicha}>Criar primeira ficha</button>}</div>}
+      {libraryQuery.trim() && !catalogo.some(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.trim().toLocaleLowerCase())) && <p role="status" className="inv-description">Nenhuma ficha adicionada corresponde à busca. O catálogo de referência das Dez Sombras acima não é filtrado por este campo.</p>}
       <dl className="inv-library-hud" aria-label="Resumo da biblioteca"><div><dt>Indivíduos / limite</dt><dd>{individuosBase.length} / {max ?? 'Interlúdio'}</dd></div><div><dt>Formas derivadas</dt><dd>{formasDerivadas.length}</dd></div><div><dt>Em campo / limite</dt><dd>{ativos.length} / {ativas}</dd></div><div><dt>Selecionadas</dt><dd>{invocacoesSelecionadas.length} / 2</dd></div><div><dt>Aguardando aprovação</dt><dd>{catalogo.filter(inv => inv.aprovacaoMestre === 'pendente').length}</dd></div></dl>
       {catalogo.length > 0 && (
 <div className="inv-command-bar flex flex-wrap items-end gap-2">
@@ -707,7 +1198,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
       {catalogo.length > 0 && (<p className="text-xs text-muted-foreground">Selecione até duas fichas e clique no mapa para escolher uma célula livre para cada uma. Invocar é Ação Livre por enquanto. Fichas com 0 PV continuam invocáveis e entram Caídas; descanso longo restaura 100% dos PV.</p>)}
       {mensagem && <p role="status" className="text-xs text-muted-foreground">{mensagem}</p>}
 {erro && <p role="alert" className="text-xs inv-error">{erro}</p>}
-      {catalogo.filter(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.toLocaleLowerCase())).map(inv => {
+      {catalogo.filter(inv => (inv.nome + ' ' + (inv.apelido ?? '')).toLocaleLowerCase().includes(libraryQuery.trim().toLocaleLowerCase())).map(inv => {
         const arte = assetForFicha(inv);
         const estadoIntermediario = validarIntermediarioInvocacao(inv, character, itensInventario, catalogo);
         const instanciaHorda = [...(character.instanciasInvocacao ?? [])].reverse().find(item =>
@@ -722,6 +1213,11 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
           : undefined;
         const token = ativos.find(entity => entity.invocationId === inv.id);
         const ativo = Boolean(token);
+        const ehAbismo = inv.subcategoria === 'dez-sombras:abismo-desconhecido-do-poco';
+        const quantidadeSaposTexto = membrosSapoVivos[inv.id] ?? '';
+        const quantidadeSapos = Number(quantidadeSaposTexto);
+        const quantidadeSaposValida = quantidadeSaposTexto.trim() !== '' &&
+          Number.isInteger(quantidadeSapos) && quantidadeSapos >= 1 && quantidadeSapos <= 3;
         const instancia = token
           ? character.instanciasInvocacao?.find(item => item.id === token.invocationInstanceId || item.tokenId === token.id)
           : instanciaHorda ?? [...(character.instanciasInvocacao ?? [])].reverse().find(item => item.modeloId === inv.id);
@@ -938,7 +1434,20 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
                 {inv.acoes.filter(acao => acao.tipo === 'habilidade').map(acao => <li key={acao.id}>
                   <strong>{acao.nome} - {acao.statusAutomacao === 'executavel' ? 'Automático' : acao.statusAutomacao === 'parcial' ? 'Parcial' : 'Manual'}</strong>
                   {acao.descricaoRegra && <p className="text-muted-foreground">{acao.descricaoRegra}</p>}
-                  {acao.id === 'segurar' && ativo && <button type="button" disabled={busySegurar || !alvosAtaque[inv.id] || emHorda} className="mt-1 rounded border px-2 py-1 disabled:opacity-50" onClick={() => void segurar(inv.id)}>Segurar alvo selecionado</button>}
+                  {acao.id === 'segurar' && ehAbismo && ativo && isMaster && <label className="mt-1 block text-xs">
+                    Sapos vivos confirmados pelo Mestre (1 a 3)
+                    <input type="number" min={1} max={3} step={1} aria-label={'Sapos vivos confirmados para ' + inv.nome}
+                      value={quantidadeSaposTexto}
+                      onChange={event => setMembrosSapoVivos(atual => ({ ...atual, [inv.id]: event.target.value }))}
+                      className="mt-1 block w-24 rounded border bg-background p-1" />
+                    <span className="text-muted-foreground">Informe a quantidade atual; ela não é inferida pelos PV.</span>
+                  </label>}
+                  {acao.id === 'segurar' && ehAbismo && ativo && !isMaster && <p className="mt-1 text-xs text-muted-foreground">Somente o Mestre pode confirmar a quantidade de sapos vivos para este comando.</p>}
+                  {acao.id === 'segurar' && ativo && <button type="button"
+                    disabled={busySegurar || !alvosAtaque[inv.id] || emHorda || (ehAbismo && (!isMaster || !quantidadeSaposValida))}
+                    title={ehAbismo && !isMaster ? 'Somente o Mestre pode confirmar a quantidade de sapos vivos.' : ehAbismo && !quantidadeSaposValida ? 'Informe a quantidade de sapos confirmada pelo Mestre.' : undefined}
+                    className="mt-1 rounded border px-2 py-1 disabled:opacity-50"
+                    onClick={() => void segurar(inv.id)}>Segurar alvo selecionado</button>}
                 </li>)}
               </ul>
             </InvocationDisclosure>

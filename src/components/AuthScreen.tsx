@@ -89,7 +89,7 @@ export function AuthScreen() {
       <section className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-2xl border border-border/70 bg-card/80 p-7 shadow-[var(--shadow-occult)] backdrop-blur-2xl sm:p-9 animate-scale-in">
         <div className="pointer-events-none absolute inset-0 rounded-2xl border border-foreground/5" aria-hidden />
         <header className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-foreground glow-text tracking-[0.18em]">THE PROMISSE</h1>
+          <h1 className="text-3xl font-bold text-foreground glow-text tracking-[0.18em]">THE SAINT PROMISSE</h1>
           <p className="mt-2 text-xs uppercase text-muted-foreground tracking-[0.14em]">Conecte-se ao destino</p>
         </header>
 

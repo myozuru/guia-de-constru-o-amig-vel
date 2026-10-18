@@ -3,6 +3,8 @@ import type { Character } from '@/types';
 import { formatDamage, parseDamage, stepDamage, type DamageDice } from '@/lib/damageStep';
 import type { ConfiguracaoEfeitoSuporteInvocacao } from '@/lib/invocacoes/schema';
 import type { InvocacaoControlador } from './tipos';
+import { calcularEscalaHorda } from './hordas';
+import { parseFormulaDanoInvocacao } from './rolagens';
 
 type Grau = NonNullable<InvocacaoControlador['grau']>;
 type Efeito = ConfiguracaoEfeitoSuporteInvocacao['efeito'];
@@ -80,8 +82,9 @@ function categoriaSimples(acao: Pick<InvocacaoControlador['acoes'][number], 'cat
  */
 export function calcularEfeitoSuporte(
   modelo: Pick<InvocacaoControlador, 'grau' | 'atributos'>,
-  acao: Pick<InvocacaoControlador['acoes'][number], 'categoriaAcao' | 'efeitoSuporte'>,
+  acao: Pick<InvocacaoControlador['acoes'][number], 'categoriaAcao' | 'efeitoSuporte' | 'formulaCura'>,
   repeticoes = 0,
+  escala = calcularEscalaHorda([]),
 ): ResultadoCalculoSuporte {
   const config = acao.efeitoSuporte;
   if (!config) return { ok: false, motivo: 'Ação de suporte sem efeito estruturado.' };
@@ -95,6 +98,11 @@ export function calcularEfeitoSuporte(
 
   if (config.efeito === 'cura') {
     if (!complexa) return { ok: false, motivo: 'Ações de cura exigem uma Ação Complexa.' };
+    if (acao.formulaCura) {
+      const formula = parseFormulaDanoInvocacao(acao.formulaCura);
+      if (!formula) return { ok: false, motivo: 'Fórmula de cura inválida; use dados e bônus fixos, como 3d10+5.' };
+      return { ok: true, efeito: { tipo: 'cura', dados: formula.dados, bonus: formula.fixo, alvos: config.alvos } };
+    }
     const dados = config.alvos === 'multiplos' ? curaMultiplos[grau] : curaUnico[grau];
     if (!dados) return { ok: false, motivo: 'O livro não oferece cura para múltiplos alvos neste grau.' };
     const atributo = config.atributoCura;
@@ -106,7 +114,7 @@ export function calcularEfeitoSuporte(
       ok: true,
       efeito: {
         tipo: 'cura',
-        dados: dados.map(dado => ({ ...dado })),
+        dados: stepDamage(dados, escala.niveisAtaqueCura),
         bonus: modificadorAtributo(valorAtributo!) * multiplicador,
         alvos: config.alvos,
       },
@@ -117,11 +125,11 @@ export function calcularEfeitoSuporte(
 
   if (config.efeito === 'defesa' || config.efeito === 'acerto') {
     if (!simples) return { ok: false, motivo: 'O bônus Complexo exige uma regra de arredondamento para valores fracionários; configure esta ação como Simples.' };
-    return { ok: true, efeito: { tipo: config.efeito, valor: Math.max(0, bonusAuxilio[grau] - repeticoes) } };
+    return { ok: true, efeito: { tipo: config.efeito, valor: Math.max(0, bonusAuxilio[grau] + escala.bonusDefesaAcerto - repeticoes) } };
   }
 
   if (config.efeito === 'dano_adicional') {
-    let delta = (complexa ? 3 : 0) - 2 * repeticoes;
+    let delta = (complexa ? 3 : 0) + escala.niveisDanoAuxilio - 2 * repeticoes;
     const dados = stepDamage(parseDamage(danoAuxilio[grau]), delta);
     const dano = dados.reduce((total, dado) => total + dado.count * dado.sides, 0) < 4
       ? [{ count: 1, sides: 4 }]
@@ -135,7 +143,7 @@ export function calcularEfeitoSuporte(
   const complexo = complexa ? valorBase * 1.5 : valorBase;
   return {
     ok: true,
-    efeito: { tipo: 'reducao_dano', valor: Math.max(0, complexo - repeticoes), tiposDano },
+    efeito: { tipo: 'reducao_dano', valor: Math.max(0, complexo + escala.rdAuxilio - repeticoes), tiposDano },
   };
 }
 

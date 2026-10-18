@@ -17,6 +17,9 @@ import type { InstanciaInvocacao } from '@/lib/invocacoes/schema';
 import type { InvocacaoControlador } from './tipos';
 import type { EmitirOpts } from '@/lib/omni/eventBus';
 import { limitarAcoesAutonomas, marcarRegraVisitada, MAX_ACOES_AUTONOMAS_POR_RODADA } from './guardiaAutonomia';
+import { solicitarConfirmacaoAutonomia, cancelarPropostaAutonomia, propostasAutonomia } from './confirmacaoAutonomia';
+import { integracaoInvocacoes, metricasIntegracaoInvocacoes } from './integracaoFlags';
+import { calcularTamanhoEfetivoHorda } from './hordas';
 
 const filaPorInstancia = new Map<string, Promise<void>>();
 const idsCadeia = new WeakMap<object, string>();
@@ -39,6 +42,8 @@ type ContextoCondicao = {
     estado: InstanciaInvocacao['estado'];
     hpAtual: number;
     hpMaximo: number;
+    tamanho: string;
+    categoriaTamanho?: number;
   };
 };
 
@@ -138,11 +143,14 @@ function contextoCondicao(
   modelo: InvocacaoControlador,
   instancia: InstanciaInvocacao,
 ): ContextoCondicao {
+  const tamanho = calcularTamanhoEfetivoHorda(modelo.tamanho ?? modelo.porte,
+    integracaoInvocacoes.escalaHorda ? instancia.composicaoHorda?.membros ?? [] : []);
   return {
     evento: { id: eventoId, nome: evento, usuarioId: opts.usuarioId, alvoId: opts.alvoId, cena: { ...opts.cena }, dano: { ...opts.dano } },
     dono: { id: dono.id, name: dono.name, category: dono.category, hpCurrent: dono.hpCurrent, hpMax: dono.hpMax, peCurrent: dono.peCurrent },
     ...(alvo ? { alvo: { id: alvo.id, name: alvo.name, category: alvo.category, hpCurrent: alvo.hpCurrent, hpMax: alvo.hpMax, peCurrent: alvo.peCurrent } } : {}),
-    shikigami: { id: modelo.id, nome: modelo.apelido?.trim() || modelo.nome, estado: instancia.estado, hpAtual: instancia.hpAtual, hpMaximo: instancia.hpMaximoAtual },
+    shikigami: { id: modelo.id, nome: modelo.apelido?.trim() || modelo.nome, estado: instancia.estado, hpAtual: instancia.hpAtual, hpMaximo: instancia.hpMaximoAtual,
+      tamanho: tamanho.tamanho, categoriaTamanho: tamanho.categoria },
   };
 }
 
@@ -306,22 +314,66 @@ export async function despacharAutonomiasInvocacao(
             return;
           }
           const requestId = `auto:${eventoId}:${instanciaAtual.id}:${automacao.id}`;
+          if (!donoAtual.profileId || useProfileStore.getState().activeProfileId !== donoAtual.profileId) {
+            registrar(`⏸️ ${modeloAtual.nome}: confirmação deve ser apresentada na tela do jogador Controlador.`);
+            return;
+          }
+          const assinatura = JSON.stringify([modeloAtual, entidade, instanciaAtual.version, tokenAtual,
+            useCombatStore.getState().round, useCombatStore.getState().currentTurnIndex]);
+          const aceite = await solicitarConfirmacaoAutonomia({
+            requestId, profileId: donoAtual.profileId, donoId: donoAtual.id,
+            instanciaId: instanciaAtual.id, modeloId: modeloAtual.id, acaoId: acaoLocal.id,
+            alvos: alvos.ids,
+            descricao: `${modeloAtual.apelido?.trim() || modeloAtual.nome} · ${acaoLocal.nome} · gatilho ${evento} · regra ${automacao.id}\nAlvos: ${alvos.ids.map(id => useCharacterStore.getState().characters.find(c => c.id === id)?.name || id).join(', ')}\nAção: ${acaoLocal.categoriaAcao}; custo: ${custo}; débitos: ${JSON.stringify(modeloAtual.custosComandosConfigurados?.[acaoLocal.id]?.debitos ?? [])}\nEfeitos: ${JSON.stringify(resolvida.config)}`,
+          });
+          if (!aceite) {
+            registrar(`⏸️ ${modeloAtual.nome}: ${acaoLocal.nome} recusada ou cancelada; nenhum recurso consumido.`);
+            return;
+          }
+          const donoConfirmado = useCharacterStore.getState().characters.find(item => item.id === donoAtual.id);
+          const modeloConfirmado = donoConfirmado?.invocacoesConhecidas?.find(item => item.id === modeloAtual.id);
+          const tokenConfirmado = useMapStore.getState().entities[tokenAtual.id];
+          const instanciaConfirmada = donoConfirmado && tokenConfirmado ? encontrarInstancia(donoConfirmado, tokenConfirmado) : undefined;
+          const assinaturaAtual = JSON.stringify([modeloConfirmado, useOmniEntidadesStore.getState().entidades[entidade.id],
+            instanciaConfirmada?.version, tokenConfirmado, useCombatStore.getState().round,
+            useCombatStore.getState().currentTurnIndex]);
+          if (assinatura !== assinaturaAtual || !instanciaConfirmada || instanciaConfirmada.estado !== 'ativa' ||
+              !useCombatStore.getState().inCombat) {
+            metricasIntegracaoInvocacoes.propostasInvalidas++;
+            registrar(`⏸️ ${modeloAtual.nome}: proposta invalidada por mudança na mesa; nenhum recurso consumido.`);
+            return;
+          }
+          const alvosConfirmados = escolherAlvos(donoConfirmado!, modeloConfirmado!, tokenConfirmado!, resolvida, politicaAlvo);
+          if (!alvosConfirmados.ok || JSON.stringify(alvosConfirmados.ids) !== JSON.stringify(alvos.ids)) {
+            metricasIntegracaoInvocacoes.propostasInvalidas++;
+            return;
+          }
           const resultado = await executarAtaqueAutonomoInvocacao(donoAtual.id, modeloAtual.id, acaoLocal.id, alvos.ids, {
             instanciaId: instanciaAtual.id,
             requestId,
             cadeia,
+            aceiteAutonomia: aceite,
           });
           if (!resultado.ok) {
             registrar(`⏸️ ${modeloAtual.apelido?.trim() || modeloAtual.nome}: automação ${acaoLocal.nome} não executada — ${resultado.motivo}`);
             return;
           }
           registrarUso(donoAtual.id, instanciaAtual.id, automacao.id, rodada);
+          metricasIntegracaoInvocacoes.execucoesComConfirmacao++;
           registrar(`🤖 ${modeloAtual.apelido?.trim() || modeloAtual.nome}: ${acaoLocal.nome} executada pela automação ${automacao.id}.`);
         });
       }
     }
   }
 }
+
+// Mudança de turno/fim do combate cancela ofertas, sem prazo inventado ou pausa do relógio.
+useCombatStore.subscribe((atual, anterior) => {
+  if (atual.inCombat !== anterior.inCombat || atual.round !== anterior.round ||
+      atual.currentTurnIndex !== anterior.currentTurnIndex) {
+    for (const id of propostasAutonomia.keys()) cancelarPropostaAutonomia(id);
+  }
+});
 
 export const autonomiaInvocacaoInternals = {
   validarCondicao: validarCondicaoAutonomia,

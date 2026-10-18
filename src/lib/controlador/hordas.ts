@@ -5,6 +5,76 @@
 
 export type GrauHorda = "quarto" | "terceiro" | "segundo" | "primeiro" | "especial";
 
+/** Líder excluído: estes são aumentos, não multiplicadores do valor rolado. */
+export function calcularEscalaHorda(membros: readonly { grau: GrauHorda }[]) {
+  const segundo = membros.filter(membro => membro.grau === 'segundo').length;
+  return {
+    niveisAtaqueCura: membros.length + segundo,
+    bonusDefesaAcerto: Math.floor(segundo / 2),
+    niveisDanoAuxilio: Math.floor(membros.length / 2),
+    rdAuxilio: membros.length,
+    categoriasTamanho: Math.floor(membros.length / 2),
+    usosAntesPrejuizo: 1 + Math.floor(membros.length / 2),
+  };
+}
+
+export function calcularPrejuizoRepeticaoHorda(usosAnteriores: number, membros: readonly { grau: GrauHorda }[]): number {
+  return Math.floor(Math.max(0, usosAnteriores) / calcularEscalaHorda(membros).usosAntesPrejuizo);
+}
+
+/** Sequência de portes já utilizada por PORTES_REPLICA; tamanho não multiplica dano. */
+export function calcularTamanhoEfetivoHorda(base: string, membros: readonly { grau: GrauHorda }[]) {
+  const portes = ['Minúsculo', 'Pequeno', 'Médio', 'Grande', 'Enorme', 'Colossal'];
+  const indice = portes.indexOf(base);
+  if (indice < 0) return { tamanho: base, categoria: undefined };
+  const categoria = indice + calcularEscalaHorda(membros).categoriasTamanho;
+  return { categoria, tamanho: portes[categoria] ?? `Colossal +${categoria - 5} categoria(s)` };
+}
+
+/** Detecta cruzamento; não resolve PV, desempate ou destino sem decisão do Mestre. */
+export function verificarPerdaMembrosHorda(pvAntes: number, pvDepois: number, pvMaximo: number, membros: number) {
+  const pendente = pvAntes > pvMaximo / 2 && pvDepois <= pvMaximo / 2;
+  return { pendente, quantidade: pendente ? Math.floor(membros / 2) : 0 };
+}
+
+export interface LimiarPerdaHorda {
+  armado: boolean;
+  curaAcumulada: number;
+  pvMaximoReferencia: number;
+  totalAtivacoes: number;
+}
+
+/** Decisão da mesa: cura efetiva acumulada, sem contar PVT ou cura excedente. */
+export function acumularCuraParaLimiarHorda(limiar: LimiarPerdaHorda, curaEfetiva: number): LimiarPerdaHorda {
+  if (limiar.armado) return { ...limiar };
+  const curaAcumulada = limiar.curaAcumulada + Math.max(0, curaEfetiva);
+  return { ...limiar, curaAcumulada, armado: curaAcumulada >= limiar.pvMaximoReferencia * 0.25 };
+}
+
+/** Regras aprovadas pelo usuário nesta sessão, não atribuídas ao livro. */
+export function resolverPerdaMembrosHorda<T extends {
+  modeloId: string; grau: GrauHorda; pvMaximoAntes: number; ordemEntrada?: number;
+}>(input: { pvAntes: number; pvDepois: number; pvMaximo: number; membros: readonly T[]; limiar?: LimiarPerdaHorda }) {
+  const semPerda = { membros: [...input.membros], removidos: [] as T[], pvAtual: input.pvDepois,
+    pvMaximo: input.pvMaximo, limiar: input.limiar };
+  const quantidade = Math.floor(input.membros.length / 2);
+  if (input.limiar?.armado === false || quantidade === 0 ||
+      !verificarPerdaMembrosHorda(input.pvAntes, input.pvDepois, input.pvMaximo, input.membros.length).pendente) return semPerda;
+  const ordenados = input.membros.map((membro, index) => ({ membro, entrada: membro.ordemEntrada ?? index }))
+    .sort((a, b) => ORDEM_GRAU[a.membro.grau] - ORDEM_GRAU[b.membro.grau] || b.entrada - a.entrada ||
+      (a.membro.modeloId < b.membro.modeloId ? -1 : a.membro.modeloId > b.membro.modeloId ? 1 : 0));
+  const removidos = ordenados.slice(0, quantidade).map(item => item.membro);
+  const ids = new Set(removidos.map(membro => membro.modeloId));
+  const pvMaximo = input.pvMaximo - removidos.reduce((total, membro) => total + membro.pvMaximoAntes / 2, 0);
+  if (pvMaximo <= 0) throw new Error('A composição da Horda não pode remover o PV máximo do líder.');
+  return {
+    membros: input.membros.filter(membro => !ids.has(membro.modeloId)), removidos,
+    pvAtual: input.pvDepois / input.pvMaximo * pvMaximo, pvMaximo,
+    limiar: { armado: false, curaAcumulada: 0, pvMaximoReferencia: pvMaximo,
+      totalAtivacoes: (input.limiar?.totalAtivacoes ?? 0) + 1 },
+  };
+}
+
 export interface InvocacaoComponenteHorda {
   id: string;
   grau: GrauHorda;

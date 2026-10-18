@@ -12,6 +12,7 @@ import { useDice3DStore } from '@/stores/useDice3DStore';
 import type { EntidadeOmni } from '@/lib/omni/tipos';
 import { invocarControlador, invocarControladores, invocarHordaControlador, recolherInvocacao, tokensInvocados, limparInvocacoesDerrotadas, causarDanoInvocacao, curarInvocacao, levantarInvocacao, resolverDerrotaPendenteInvocacao, comandarReposicionamento, comandarAtaque, comandarSuporte, expirarEfeitosSuporteInvocacoes, comandosPorAcao, confirmarMovimentoInvocacao, rolarPericiaInvocacao } from '@/lib/controlador/mapa';
 import type { InvocacaoControlador } from '@/lib/controlador/tipos';
+import { integracaoInvocacoes } from '@/lib/controlador/integracaoFlags';
 
 let numeroFixture = 0;
 
@@ -59,6 +60,7 @@ function prepararMovimentoPendente(
   });
 }
 beforeEach(() => {
+  integracaoInvocacoes.resolverPerdaHorda = true;
   numeroFixture += 1;
   useInventoryStore.getState().resetAll();
   useLogStore.getState().clearLogs();
@@ -78,6 +80,180 @@ beforeEach(() => {
   comoTela({ profileId: 'perfil-dono', role: 'PLAYER' });
 });
 describe('Controlador — materialização real no mapa', () => {
+  it('conta usos reais de Horda, reseta no turno e reescala suporte e tamanho ao mudar a composição', async () => {
+    useCombatStore.setState({ inCombat: false, round: 1 } as never);
+    const dono = pegarFicha('dono');
+    const ataque = { id: 'atk', nome: 'Ataque', tipo: 'ataque' as const, tipoExecucao: 'manual' as const,
+      categoriaAcao: 'acao_comum' as const, dano: '1d4', alcanceM: 9, atributoAtaque: 'forca' as const };
+    const rd = { id: 'rd', nome: 'Proteção', tipo: 'suporte' as const, tipoExecucao: 'manual' as const,
+      categoriaAcao: 'acao_simples' as const, alcanceM: 9,
+      efeitoSuporte: { efeito: 'reducao_dano' as const, alvos: 'unico' as const, tiposDano: ['DCO' as const] } };
+    useCharacterStore.getState().updateCharacter('dono', { level: 4, treinoControle: 3,
+      invocacoesConhecidas: dono.invocacoesConhecidas!.map(m => m.id === 'a'
+        ? { ...m, grau: 'primeiro', atributos: { forca: 10, destreza: 10, constituicao: 10, inteligencia: 10, sabedoria: 10, presenca: 10 }, acoes: [ataque, rd], economiaAcoesConfigurada: { acaoComum: 3, acaoSimples: 3 } }
+        : { ...m, grau: 'segundo' }) });
+    const horda = invocarHordaControlador('dono', { liderId: 'a', membrosIds: ['b', 'c'],
+      tempoAdicional: { quantidade: 1, unidade: 'turnos' }, x: 210, y: 140 });
+    if (!horda.ok) throw new Error(horda.motivo);
+    useCombatStore.setState({ inCombat: true, round: 1, currentTurnIndex: 0,
+      initiativeOrder: [{ charId: 'dono', charName: 'Dono', roll: 10, bonus: 0, total: 10 }] } as never);
+    expect(useMapStore.getState().entities[horda.tokenId].invocationEffectiveSize).toBe('Grande');
+    expect(await comandarSuporte('dono', 'a', 'rd', ['dono'])).toMatchObject({ ok: true, valor: 10 });
+    expect(await comandarSuporte('dono', 'a', 'rd', [`invoc:${horda.tokenId}`])).toMatchObject({ ok: true, valor: 10 });
+    let instancia = pegarFicha('dono').instanciasInvocacao![0];
+    expect(instancia.usosAuxilioRodada?.total).toBe(2);
+    expect(instancia.economiaAcoes?.acaoSimples?.atual).toBe(1);
+    const composicaoInicial = instancia.composicaoHorda!;
+    const origem = { donoId: 'dono', instanciaId: instancia.id, grau: 'primeiro' as const,
+      categoriaAcao: 'acao_simples' as const, usosAnteriores: 0 };
+    useCharacterStore.getState().updateCharacter('dono', { activeBuffs: [...pegarFicha('dono').activeBuffs,
+      { id: 'continuo-def', spellName: 'Defesa', type: 'ca', value: 0, remainingTurns: -1, expiraNaRodada: 2,
+        suporteHorda: { ...origem, config: { efeito: 'defesa', alvos: 'unico' } } },
+      { id: 'continuo-hit', spellName: 'Acerto', type: 'hit', value: 0, remainingTurns: -1, expiraNaRodada: 2,
+        suporteHorda: { ...origem, config: { efeito: 'acerto', alvos: 'unico' } } },
+      { id: 'continuo-dano', spellName: 'Dano', type: 'extraDiceAfter', value: 0, remainingTurns: -1, expiraNaRodada: 2,
+        suporteHorda: { ...origem, config: { efeito: 'dano_adicional', alvos: 'unico' } } },
+    ] });
+    expect(pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-def')?.value).toBe(5);
+    expect(pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-hit')?.value).toBe(5);
+    const formulaDanoInicial = pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-dano')?.extraDamageFormula;
+    expect(causarDanoInvocacao(horda.tokenId, 12, 'DCO', undefined, { tipoAlvo: 'area' })).toMatchObject({ hpRestante: 9 });
+    expect(pegarFicha('dono').activeBuffs.find(b => b.type === 'rd')?.value).toBe(9);
+    expect(pegarFicha('dono').instanciasInvocacao![0].efeitosSuporteAtivos![0].valor).toBe(8);
+    expect(pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-def')?.value).toBe(4);
+    expect(pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-hit')?.value).toBe(4);
+    expect(pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-dano')?.extraDamageFormula).toBe('2d8');
+    expect(useMapStore.getState().entities[horda.tokenId].invocationEffectiveSize).toBe('Médio');
+    // Simula entrada da composição recebida pela sincronização; PV não são alterados pelo observador.
+    useCharacterStore.getState().updateCharacter('dono', { instanciasInvocacao: pegarFicha('dono').instanciasInvocacao!.map(i => ({ ...i, composicaoHorda: composicaoInicial })) });
+    expect(pegarFicha('dono').activeBuffs.find(b => b.type === 'rd')?.value).toBe(10);
+    expect(pegarFicha('dono').instanciasInvocacao![0].efeitosSuporteAtivos![0].valor).toBe(10);
+    expect(pegarFicha('dono').activeBuffs.find(b => b.id === 'continuo-dano')?.extraDamageFormula).toBe(formulaDanoInicial);
+    expect(useMapStore.getState().entities[horda.tokenId].invocationEffectiveSize).toBe('Grande');
+    expect(await comandarSuporte('dono', 'a', 'rd', ['dono'])).toMatchObject({ ok: true, valor: 9 });
+    const { sincronizarSuporteContinuoHorda } = await import('@/lib/controlador/suporteContinuoHorda');
+    const antesSincronizar = JSON.stringify(pegarFicha('dono'));
+    sincronizarSuporteContinuoHorda();
+    sincronizarSuporteContinuoHorda();
+    expect(JSON.stringify(pegarFicha('dono'))).toBe(antesSincronizar);
+    useCharacterStore.setState({ characters: [...useCharacterStore.getState().characters, ficha('inimigo-contador', { category: 'INIMIGO', hpCurrent: 1000, hpMax: 1000, ca: 100 })] });
+    useMapStore.getState().addEntity({ shape: 'ELLIPSE', x: 280, y: 140, w: 70, h: 70, rotation: 0, color: '#a00', locked: false, characterId: 'inimigo-contador' });
+    const rolar = vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockResolvedValue([10]);
+    try {
+      const totais: number[] = [];
+      for (let n = 0; n < 3; n++) {
+        const resultado = await comandarAtaque('dono', 'a', 'atk', 'inimigo-contador');
+        if (!resultado.ok || !('totalAtaque' in resultado)) throw new Error('Ataque não resolvido');
+        totais.push(resultado.totalAtaque);
+      }
+      expect(totais).toEqual([12, 12, 9]);
+      instancia = pegarFicha('dono').instanciasInvocacao![0];
+      expect(instancia.usosAtaqueTurno?.total).toBe(3);
+      const { processarResetEconomiaInstancia } = await import('@/lib/controlador/economiaAcoes');
+      const reset = processarResetEconomiaInstancia(instancia, {}, 'inicio_turno_dono', 'turno-seguinte');
+      expect(reset.usosAtaqueTurno).toBeUndefined();
+      expect(reset.usosAuxilioRodada).toBeUndefined();
+      expect(processarResetEconomiaInstancia(reset, {}, 'inicio_turno_dono', 'turno-seguinte')).toBe(reset);
+    } finally { rolar.mockRestore(); useCombatStore.setState({ inCombat: false } as never); }
+  });
+  it('remove o último membro do mesmo grau, preserva PV individuais e libera reinvocação na rodada seguinte', () => {
+    useCombatStore.setState({ inCombat: false, round: 1, combatId: 'perda-real' } as never);
+    const dono = pegarFicha('dono');
+    useCharacterStore.getState().updateCharacter('dono', { level: 4, treinoControle: 3,
+      invocacoesConhecidas: dono.invocacoesConhecidas!.map(item => ({ ...item, grau: item.id === 'a' ? 'primeiro' : 'quarto' })) });
+    const horda = invocarHordaControlador('dono', { liderId: 'a', membrosIds: ['b', 'c'],
+      tempoAdicional: { quantidade: 1, unidade: 'turnos' }, x: 210, y: 140 });
+    if (!horda.ok) throw new Error(horda.motivo);
+    useCombatStore.setState({ inCombat: true, round: 1 } as never);
+    expect(causarDanoInvocacao(horda.tokenId, 12, 'DCO', undefined, { tipoAlvo: 'area', eventoId: 'dano-perda' })).toMatchObject({ ok: true, hpRestante: 9 });
+    let salva = pegarFicha('dono').instanciasInvocacao![0];
+    expect(salva).toMatchObject({ hpAtual: 9, hpMaximoAtual: 18,
+      membrosHordaRemovidos: [{ modeloId: 'c', pvIndividual: 12, bloqueioRodadas: 1 }],
+      limiarPerdaHorda: { armado: false, curaAcumulada: 0, pvMaximoReferencia: 18 } });
+    expect(salva.composicaoHorda!.membros.map(m => m.modeloId)).toEqual(['b']);
+    expect(useMapStore.getState().entities[horda.tokenId]).toMatchObject({ hp: 9, hpMax: 18, invocationHordeMemberIds: ['b'], invocationHordeSizeIncreases: 0 });
+    expect(pegarFicha('dono').invocacoesConhecidas!.filter(m => m.id !== 'a').map(m => m.hpAtual)).toEqual([12, 12]);
+    expect(invocarControlador('dono', 'c', 'sul')).toMatchObject({ ok: false, motivo: 'Aguarde uma rodada após a saída deste membro da Horda.' });
+    useCharacterStore.getState().updateCharacter('dono', { instanciasInvocacao: JSON.parse(JSON.stringify([salva])) });
+    expect(causarDanoInvocacao(horda.tokenId, 12, 'DCO', undefined, { tipoAlvo: 'area', eventoId: 'dano-perda' })).toMatchObject({ ok: true, hpRestante: 9 });
+    expect(pegarFicha('dono').instanciasInvocacao![0].membrosHordaRemovidos).toHaveLength(1);
+    expect(curarInvocacao(horda.tokenId, 3)).toMatchObject({ ok: true, hpRestante: 12 });
+    expect(pegarFicha('dono').instanciasInvocacao![0].limiarPerdaHorda?.armado).toBe(false);
+    expect(curarInvocacao(horda.tokenId, 2)).toMatchObject({ ok: true, hpRestante: 14 });
+    expect(pegarFicha('dono').instanciasInvocacao![0].limiarPerdaHorda?.armado).toBe(true);
+    useCombatStore.setState({ round: 2 });
+    salva = pegarFicha('dono').instanciasInvocacao![0];
+    expect(salva.membrosHordaRemovidos![0].bloqueioRodadas).toBe(0);
+    expect(invocarControlador('dono', 'c', 'sul').ok).toBe(true);
+    expect(pegarFicha('dono').invocacoesConhecidas!.find(m => m.id === 'c')!.hpAtual).toBe(12);
+    useCombatStore.setState({ inCombat: false } as never);
+  });
+  it('persiste a perda pendente da Horda e não duplica o aviso após cura e recarregamento', () => {
+    integracaoInvocacoes.resolverPerdaHorda = false;
+    useCombatStore.setState({ inCombat: false } as never);
+    const dono = pegarFicha('dono');
+    useCharacterStore.getState().updateCharacter('dono', {
+      level: 4, treinoControle: 3,
+      invocacoesConhecidas: dono.invocacoesConhecidas!.map(item => ({ ...item, grau: item.id === 'a' ? 'primeiro' : 'quarto' })),
+    });
+    const horda = invocarHordaControlador('dono', { liderId: 'a', membrosIds: ['b', 'c'],
+      tempoAdicional: { quantidade: 1, unidade: 'turnos' }, x: 210, y: 140 });
+    if (!horda.ok) throw new Error(horda.motivo);
+    expect(causarDanoInvocacao(horda.tokenId, 12, 'DCO', undefined, { tipoAlvo: 'area' })).toMatchObject({ ok: true, hpRestante: 12 });
+    const salva = pegarFicha('dono').instanciasInvocacao![0];
+    expect(salva.perdaMembrosHordaPendente).toMatchObject({
+      quantidade: 1, pvAntes: 24, pvDepois: 12, pvMaximo: 24, membrosIds: ['b', 'c'],
+    });
+    expect(salva.composicaoHorda!.membros).toHaveLength(2);
+    useCharacterStore.getState().updateCharacter('dono', { instanciasInvocacao: JSON.parse(JSON.stringify([salva])) });
+    expect(curarInvocacao(horda.tokenId, 2)).toMatchObject({ ok: true, hpRestante: 14 });
+    expect(causarDanoInvocacao(horda.tokenId, 2, 'DCO', undefined, { tipoAlvo: 'area' })).toMatchObject({ ok: true, hpRestante: 12 });
+    expect(pegarFicha('dono').instanciasInvocacao![0].perdaMembrosHordaPendente).toEqual(salva.perdaMembrosHordaPendente);
+    expect(pegarFicha('dono').instanciasInvocacao![0].hpMaximoAtual).toBe(24);
+    expect(pegarFicha('dono').invocacoesConhecidas!.filter(m => m.id !== 'a').map(m => m.hpAtual)).toEqual([12, 12]);
+    expect(useLogStore.getState().logs.filter(log => log.message.includes('Horda atingiu metade dos PV'))).toHaveLength(1);
+  });
+  it('usa dados escalados em ataques de Horda e acrescenta RD ao auxílio sem alterar a ficha-base', async () => {
+    useCombatStore.setState({ inCombat: false } as never);
+    const dono = pegarFicha('dono');
+    const ataque = { id: 'ataque-horda', nome: 'Ataque', tipo: 'ataque' as const, tipoExecucao: 'manual' as const,
+      categoriaAcao: 'acao_comum' as const, dano: '1d4', alcanceM: 9, atributoAtaque: 'forca' as const };
+    const auxilio = { id: 'rd-horda', nome: 'Proteção', tipo: 'suporte' as const, tipoExecucao: 'manual' as const,
+      categoriaAcao: 'acao_simples' as const, alcanceM: 9,
+      efeitoSuporte: { efeito: 'reducao_dano' as const, alvos: 'unico' as const, tiposDano: ['DCO' as const] } };
+    useCharacterStore.getState().updateCharacter('dono', {
+      level: 4,
+      invocacoesConhecidas: dono.invocacoesConhecidas!.map(item => item.id === 'a'
+        ? { ...item, grau: 'primeiro', atributos: { forca: 10, destreza: 10, constituicao: 10, inteligencia: 10, sabedoria: 10, presenca: 10 },
+            economiaAcoesConfigurada: { acaoComum: 2, acaoSimples: 1 }, acoes: [ataque, auxilio] }
+        : { ...item, grau: 'quarto' }),
+    });
+    const horda = invocarHordaControlador('dono', { liderId: 'a', membrosIds: ['b'],
+      tempoAdicional: { quantidade: 1, unidade: 'turnos' }, x: 210, y: 140 });
+    if (!horda.ok) throw new Error(horda.motivo);
+    useCharacterStore.setState({ characters: [...useCharacterStore.getState().characters,
+      ficha('inimigo-horda', { category: 'INIMIGO', hpCurrent: 100, hpMax: 100, ca: 1 })] });
+    useMapStore.getState().addEntity({ shape: 'ELLIPSE', x: 280, y: 140, w: 70, h: 70, rotation: 0,
+      color: '#aa0000', locked: false, characterId: 'inimigo-horda' });
+    useCombatStore.setState({ inCombat: true, round: 1, currentTurnIndex: 0,
+      initiativeOrder: [{ charId: 'dono', charName: 'Dono', roll: 10, bonus: 0, total: 10 }] } as never);
+    const rolar = vi.spyOn(useDice3DStore.getState(), 'requestRoll').mockImplementation(async tipos => tipos.map(t => t === 'D20' ? 15 : 6));
+    try {
+      for (let uso = 0; uso < 2; uso++) {
+        expect(await comandarAtaque('dono', 'a', 'ataque-horda', 'inimigo-horda')).toMatchObject({ ok: true, dano: 6 });
+      }
+      expect(rolar.mock.calls.some(([tipos]) => tipos.includes('D6'))).toBe(true);
+      expect(pegarFicha('dono').invocacoesConhecidas!.find(m => m.id === 'a')!.acoes[0].dano).toBe('1d4');
+      expect(await comandarSuporte('dono', 'a', 'rd-horda', ['dono'])).toMatchObject({ ok: true, valor: 9 });
+      const token = useMapStore.getState().entities[horda.tokenId];
+      expect(token.hp).toBe(18);
+      expect(token.hpMax).toBe(18);
+      expect(tokensInvocados('dono')).toHaveLength(1);
+    } finally {
+      rolar.mockRestore();
+      useCombatStore.setState({ inCombat: false } as never);
+    }
+  });
   it('move no turno do dono dentro do deslocamento e gasta só a ação da instância', () => {
     configurarEconomiaMovimento('a');
     useCharacterStore.getState().updateCharacter('dono', { actionsCurrent: 2, bonusActionsCurrent: 1 });

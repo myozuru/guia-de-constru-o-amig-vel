@@ -156,6 +156,7 @@ export interface SpellBuff {
 }
 
 export interface ActiveBuff {
+  suporteHorda?: import('@/lib/invocacoes/schema').OrigemSuporteHorda;
   id: string;
   spellName: string;
   type: 'ca' | 'dc' | 'hit' | 'skill' | 'attribute' | 'extraDice' | 'extraDiceAfter' | 'damageBonus' | 'damageLevels' | 'critMargin' | 'negacaoRd' | 'rd' | 'tr' | 'movement' | 'spellArea' | 'spellRange';

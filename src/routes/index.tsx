@@ -25,15 +25,15 @@ const TpFichasApp = lazy(async () => {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "The Promisse — TP Fichas" },
+      { title: "The Saint Promisse — TP Fichas" },
       {
         name: "description",
-        content: "Gerencie fichas, combate, itens, mapas e campanhas de The Promisse.",
+        content: "Gerencie fichas, combate, itens, mapas e campanhas de The Saint Promisse.",
       },
-      { property: "og:title", content: "The Promisse — TP Fichas" },
+      { property: "og:title", content: "The Saint Promisse — TP Fichas" },
       {
         property: "og:description",
-        content: "Painel completo para a campanha de RPG The Promisse.",
+        content: "Painel completo para a campanha de RPG The Saint Promisse.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

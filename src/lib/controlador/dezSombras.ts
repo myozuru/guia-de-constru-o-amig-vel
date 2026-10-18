@@ -34,7 +34,7 @@ export interface ModeloFonteDezSombras {
   acoes: AcaoFonte[];
 }
 
-function ataque(input: {
+export function ataque(input: {
   id: string; nome: string; dano: string; tipoDano: DamageType; alcanceM?: number;
   bonusAtaque: number; atributoAtaque?: 'forca' | 'destreza'; descricaoRegra?: string;
   statusAutomacao?: 'executavel' | 'parcial' | 'manual';
@@ -70,7 +70,7 @@ function habilidade(id: string, nome: string, descricaoRegra: string, categoriaA
   };
 }
 
-function cura(input: {
+export function cura(input: {
   id: string; nome: string; formula: string; alcanceM: number;
   alvos?: 'unico' | 'multiplos'; custoPE?: number;
   todosNoAlcance?: boolean; permiteInimigos?: boolean; somenteProprio?: boolean; curaRealSemCusto?: boolean; descricaoRegra?: string;
@@ -99,15 +99,15 @@ const perfis: ModeloFonteDezSombras[] = [
     id: 'cao-branco', nome: 'Cão Divino Branco', grau: 'quarto', custoPE: 2, hp: 25, defesa: 19, deslocamentoM: 10.5,
     atributos: { forca: 12, destreza: 16, constituicao: 10, inteligencia: 8, sabedoria: 6, presenca: 6 },
     pagina: 55, domadoInicialmente: true,
-    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: quando outro shikigami estiver a até 1,5 m do alvo, o Cão atacante recebe +2 no acerto (definição do usuário). Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
-    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), { ...habilidade('alcateia', 'Alcateia', 'Quando outro Shikigami estiver a até 1,5 m do alvo, concede +2 ao ataque do Cão. O bônus é verificado automaticamente ao usar Mordida.'), statusAutomacao: 'executavel' }],
+    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: a fonte condiciona o bônus a outro shikigami estar a até 1,5 m do alvo e diz que “ele” recebe +2; o antecedente do pronome é ambíguo, então o Mestre define o beneficiário e a aplicação. Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
+    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), { ...habilidade('alcateia', 'Alcateia', 'A fonte condiciona o bônus a outro Shikigami estar a até 1,5 m do alvo e diz que “ele” recebe +2; o antecedente do pronome é ambíguo, então o Mestre define o beneficiário e a aplicação.'), statusAutomacao: 'manual' }],
   },
   {
     id: 'cao-preto', nome: 'Cão Divino Preto', grau: 'quarto', custoPE: 2, hp: 25, defesa: 19, deslocamentoM: 10.5,
     atributos: { forca: 12, destreza: 16, constituicao: 10, inteligencia: 8, sabedoria: 6, presenca: 6 },
     pagina: 55, domadoInicialmente: true,
-    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: quando outro shikigami estiver a até 1,5 m do alvo, o Cão atacante recebe +2 no acerto (definição do usuário). Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
-    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), { ...habilidade('alcateia', 'Alcateia', 'Quando outro Shikigami estiver a até 1,5 m do alvo, concede +2 ao ataque do Cão. O bônus é verificado automaticamente ao usar Mordida.'), statusAutomacao: 'executavel' }],
+    descricao: 'Mordida: 1,5 m, +5, 2d8+3 perfurante. Alcateia: a fonte condiciona o bônus a outro shikigami estar a até 1,5 m do alvo e diz que “ele” recebe +2; o antecedente do pronome é ambíguo, então o Mestre define o beneficiário e a aplicação. Regra definida pelo usuário: cada Cão custa 2 PE; invocar o par custa 4 PE. Perfil-base do livro para nível 1 e maestria +2.',
+    acoes: [ataque({ id: 'mordida', nome: 'Mordida', dano: '2d8+3', tipoDano: 'DP', alcanceM: 1.5, bonusAtaque: 4 }), { ...habilidade('alcateia', 'Alcateia', 'A fonte condiciona o bônus a outro Shikigami estar a até 1,5 m do alvo e diz que “ele” recebe +2; o antecedente do pronome é ambíguo, então o Mestre define o beneficiário e a aplicação.'), statusAutomacao: 'manual' }],
   },
   {
     id: 'nue', nome: 'Nue', grau: 'quarto', custoPE: 3, hp: 25, defesa: 19, deslocamentoM: 10.5,
@@ -124,10 +124,10 @@ const perfis: ModeloFonteDezSombras[] = [
     id: 'sapo', nome: 'Sapo', grau: 'quarto', custoPE: 3, hp: 25, defesa: 18, deslocamentoM: 9,
     atributos: { forca: 16, destreza: 14, constituicao: 10, inteligencia: 6, sabedoria: 6, presenca: 6 },
     pagina: 57, domadoInicialmente: false,
-    descricao: 'Segurar: língua até 9 m, disputa Luta contra Atletismo e aplica Agarrado; o alvo pode tentar escapar no início de seus turnos. Arremessar: só contra alvo agarrado, 2d6+3 impacto, Reflexos reduz o efeito; falha causa Caído. Fora de Risco: reação até 4,5 m, compara Reflexos do Sapo com o total do ataque; se superar, nega o ataque e move a criatura protegida até 3 m para espaço livre. Desempate, consentimento e origem da distância não são definidos.',
+    descricao: 'Segurar: língua até 9 m, disputa Luta contra Atletismo e aplica Agarrado; o alvo pode tentar escapar no início de seus turnos. Arremessar: ação Complexa apenas contra alvo agarrado; lança a criatura a um ponto desocupado até 6 m, encerra o agarrão e causa 2d6+3 de impacto. O TR de Reflexos causa Caído em caso de falha; a fonte não descreve redução de dano no sucesso nem define a CD, a origem da distância ou a visibilidade do ponto. Fora de Risco: reação até 4,5 m, compara Reflexos do Sapo com o total do ataque; se superar, nega o ataque e move a criatura protegida até 3 m para espaço livre. Desempate, consentimento e origem da distância não são definidos.',
     acoes: [
-      ataque({ id: 'arremessar', nome: 'Arremessar', dano: '2d6+3', tipoDano: 'DI', bonusAtaque: 0, statusAutomacao: 'manual', descricaoRegra: 'Somente contra alvo Agarrado. O alvo faz Reflexos; falha também causa Caído. O texto-fonte não define a fórmula do TR.' }),
-      { ...habilidade('segurar', 'Segurar', 'Disputa Luta do Sapo contra Atletismo do alvo até 9 m; sucesso aplica Agarrado. A fuga ocorre no início do turno do alvo usando a regra geral de agarrão.'), alcanceM: 9, statusAutomacao: 'executavel' },
+      ataque({ id: 'arremessar', nome: 'Arremessar', dano: '2d6+3', tipoDano: 'DI', bonusAtaque: 0, statusAutomacao: 'manual', descricaoRegra: 'Somente contra alvo Agarrado. Escolha manualmente ponto desocupado a até 6 m; a fonte não define a origem da distância nem a visibilidade do ponto. O agarrão termina e o alvo sofre 2d6+3 de impacto; o TR de Reflexos causa Caído em caso de falha. A fonte não descreve redução de dano no sucesso nem define a fórmula da CD.' }),
+      { ...habilidade('segurar', 'Segurar', 'Ação Simples: disputa o Luta +5 do Sapo contra Atletismo do alvo até 9 m; sucesso aplica Agarrado. A tentativa de fuga é tratada no início do turno do alvo conforme a ficha.', 'acao_simples'), alcanceM: 9, statusAutomacao: 'executavel' },
       habilidade('fora-de-risco', 'Fora de Risco', 'Reação para proteger criatura até 4,5 m: teste de Reflexos do Sapo contra o total do ataque; se superar, anula o ataque e move o protegido até 3 m para espaço livre. Empate e aceitação do deslocamento permanecem indefinidos.', 'reacao'),
     ],
   },
@@ -152,7 +152,7 @@ const perfis: ModeloFonteDezSombras[] = [
       ataque({ id: 'golpe-tromba', nome: 'Golpe com Tromba', dano: '2d12+4', tipoDano: 'DI', alcanceM: 3, bonusAtaque: 2 }),
       { id: 'torrente-agua', nome: 'Torrente de Água', tipo: 'ataque', tipoExecucao: 'manual', teste: 'resistencia', categoriaAcao: 'acao_complexa', resistenciaAlvo: 'Fortitude', atributoCD: 'constituicao', multiplicadorDanoAtributo: 0, dano: '2d10+4', tipoDano: 'DI', danoNoSucesso: 'metade', alcanceM: 12, statusAutomacao: 'executavel', descricaoRegra: 'No sucesso do TR de Fortitude, o alvo sofre metade do dano e não é empurrado. Na falha, é empurrado 4,5 m, mesmo se o dano for 0; paredes ou tokens podem interromper o movimento.' },
       habilidade('defesa-alternativa', 'Defesa Alternativa (Constituição)', 'O perfil lista Defesa Alternativa por Constituição, sem fórmula de recalcular Defesa; aplicação manual.'),
-      habilidade('robustez', 'Robustez', 'A característica adiciona +10 PV máximos aos 80 PV-base (90 no total).'),
+      { ...habilidade('robustez', 'Robustez', 'A característica adiciona +10 PV máximos aos 80 PV-base (90 no total), já aplicados ao perfil.'), statusAutomacao: 'executavel' },
     ],
   },
   {
@@ -162,7 +162,7 @@ const perfis: ModeloFonteDezSombras[] = [
     descricao: 'Cura Concentrada cura um alvo a até 4,5 m em 3d10+5 PV. Liberar Energia Reversa cura todas as criaturas em até 3 m em 2d12+5 PV cada. Fluxo Reverso: energia amaldiçoada não afeta objetos até 3 m; criaturas nessa área recebem +6 em testes contra efeitos de técnicas amaldiçoadas. Auto-inclusão e limites de área não são detalhados.',
     acoes: [
       cura({ id: 'cura-concentrada', nome: 'Cura Concentrada', formula: '3d10+5', alcanceM: 4.5, custoPE: 2 }),
-      cura({ id: 'liberar-energia-reversa', nome: 'Liberar Energia Reversa', formula: '2d12+5', alcanceM: 3, alvos: 'multiplos', custoPE: 2, todosNoAlcance: true, descricaoRegra: 'Regra da campanha: cura aliados e invocações aliadas no raio; inimigos não são alvos.' }),
+      cura({ id: 'liberar-energia-reversa', nome: 'Liberar Energia Reversa', formula: '2d12+5', alcanceM: 3, alvos: 'multiplos', custoPE: 2, todosNoAlcance: true, permiteInimigos: true, descricaoRegra: 'Cura todas as criaturas em até 3 m em 2d12+5 PV cada.' }),
       habilidade('fluxo-reverso', 'Fluxo Reverso', 'Aura de 3 m: impede energia amaldiçoada de afetar objetos e concede +6 a criaturas em testes contra efeitos de técnicas amaldiçoadas. A seleção de objetos e a integração de bônus situacionais precisam de regra própria.'),
     ],
   },
@@ -186,7 +186,7 @@ const perfis: ModeloFonteDezSombras[] = [
       habilidade('adaptacao-defensiva', 'Adaptação Defensiva', 'Após receber um tipo de dano, resistência após 1 rodada e imunidade após outra. Duração, tipos simultâneos e marco exato permanecem sem definição.'),
       habilidade('adaptacao-ofensiva', 'Adaptação Ofensiva', 'Cada tentativa que não acerta um alvo concede +5 cumulativo contra ele até o primeiro acerto; o bônus permanece depois. Sem teto ou definição de tentativa elegível.'),
       habilidade('burlar-defesas', 'Burlar Defesas', 'Ao acertar alvo resistente, depois de 1 rodada ignora um nível de resistência e após outra ignora por completo. A ficha não define progressão por alvo/tipo nem reinício.'),
-      habilidade('robustez', 'Robustez', 'A característica adiciona +40 PV máximos aos 200 PV-base (240 no total).'),
+      { ...habilidade('robustez', 'Robustez', 'A característica adiciona +40 PV máximos aos 200 PV-base (240 no total), já aplicados ao perfil.'), statusAutomacao: 'executavel' },
     ],
   },
   {
@@ -239,10 +239,10 @@ export function transformarCaoEmTotalidade(modelo: InvocacaoControlador): Invoca
           alcanceM: 1.5,
           bonusAtaque: 7,
           statusAutomacao: 'executavel',
-          descricaoRegra: 'Perfil publicado: +8 no acerto no n\u00edvel 1 com maestria +2; 3d8+6 perfurante. Alcateia acrescenta +4 quando outro shikigami est\u00e1 a at\u00e9 1,5 m do alvo.',
+          descricaoRegra: 'Perfil publicado: +8 no acerto no n\u00edvel 1 com maestria +2; 3d8+6 perfurante. A fonte também prevê +4 de Alcateia se outro shikigami estiver a at\u00e9 1,5 m do alvo e diz que “ele” recebe o bônus; o antecedente do pronome é ambíguo, então o Mestre define o benefici\u00e1rio e a aplica\u00e7\u00e3o.',
         }
       : acao.id === 'alcateia'
-        ? { ...acao, statusAutomacao: 'executavel', descricaoRegra: 'Totalidade recebe +4 no acerto quando outro shikigami estiver a at\u00e9 1,5 m do alvo; aplicado automaticamente em Mordida.' }
+        ? { ...acao, statusAutomacao: 'manual', descricaoRegra: 'A fonte prevê +4 se outro shikigami estiver a at\u00e9 1,5 m do alvo e diz que “ele” recebe o bônus; o antecedente do pronome é ambíguo, então o Mestre define o benefici\u00e1rio e a aplica\u00e7\u00e3o.' }
         : { ...acao }),
   };
 }
@@ -282,11 +282,11 @@ export const HABILIDADES_TECNICA_DEZ_SOMBRAS = [
   { id: 'estoque-das-sombras', nome: 'Estoque das Sombras', nivel: 0, pagina: 69, automacao: 'parcial', descricao: 'Passiva: até 5 espaços de itens na própria sombra; primeira retirada é ação livre, as seguintes usam ação bônus.' },
   { id: 'ocultacao-sombria', nome: 'Ocultação Sombria', nivel: 1, pagina: 69, automacao: 'manual', descricao: 'Ação bônus, alcance 4,5 m, duração variável. Entra numa sombra e fica indetectável/invisível, sem movimento independente; pode sair à vontade ou ser expelido quando a sombra cessar. Detecção e posição de expulsão não foram definidas.' },
   { id: 'passo-sombrio', nome: 'Passo Sombrio', nivel: 1, pagina: 69, automacao: 'manual', descricao: 'Ação bônus: teleporta até a sombra de criatura não hostil a até 9 m, sem ataque de oportunidade. Visão e obstáculos não foram definidos.' },
-  { id: 'fuga-do-coelho', nome: 'Fuga do Coelho', nivel: 3, pagina: 70, automacao: 'manual', descricao: 'Reação quando o usuário é alvo de ataque: coelhos negam o ataque e o usuário pode mover até 9 m para espaço livre sem ataques de oportunidade. Os coelhos não são shikigami e somem no início do próximo turno. Obrigatoriedade do movimento não foi definida.' },
+  { id: 'fuga-do-coelho', nome: 'Fuga do Coelho', nivel: 3, pagina: 70, automacao: 'manual', descricao: 'Reação quando o usuário é alvo de ataque: coelhos negam o ataque e o usuário pode mover até 9 m para espaço livre sem ataques de oportunidade (opcional). Os coelhos não são shikigami e somem no início do próximo turno.' },
   { id: 'jardim-das-sombras-sobrepostas', nome: 'Jardim das Sombras Sobrepostas', nivel: 0, pagina: 71, automacao: 'manual', descricao: 'Expansão incompleta. Duração 1 + Aptidão de Domínio rodadas; área indicada como 4,5 m × maestria; pode receber até três efeitos: invocações persistentes, clones e chão de sombras. Seleção, custos, ação, arredondamento e término estão incompletos na fonte.' },
 ] as const;
 
-export function criarPacoteDezSombras(donoCharacterId: string, incluirHomebrew = true): InvocacaoControlador[] {
+export function criarPacoteDezSombras(donoCharacterId: string, incluirHomebrew = false): InvocacaoControlador[] {
   return perfis
     .filter(perfil => incluirHomebrew || !perfil.opcionalHomebrew)
     .map(perfil => {

@@ -270,6 +270,8 @@ const canStartMoveEntityNow = (entity: Entity): boolean => {
   const characters = useCharacterStore.getState().characters;
   const activeProfileId = useProfileStore.getState().activeProfileId;
   if (!playerOwnsEntity(entity, activeProfileId, characters)) return false;
+  if (entity.characterId && characters.find(character => character.id === entity.characterId)
+    ?.activeConditions?.some(condition => condition.conditionId === 'agarrado')) return false;
 
   const combat = useCombatStore.getState();
   // Servos não ganham iniciativa própria: em combate o jogador move no turno

@@ -1,4 +1,5 @@
 import type { InvocacaoControlador } from './tipos';
+import { ataque, cura } from './dezSombras';
 
 /** Formas descritas à parte no material da Enciclopédia; não são novos membros-base. */
 export const DEZ_SOMBRAS_FORMAS_DERIVADAS = [
@@ -10,7 +11,7 @@ export const DEZ_SOMBRAS_FORMAS_DERIVADAS = [
     lacunas: [
       'Porte e atributos não são especificados; o porte Médio exibido é provisório.',
       'A composição da quimera e a perda de membros não têm regra operacional definida.',
-      'Segurar, Fora de Risco, Alado e Grupo (3 sapos) permanecem manuais.',
+      'Segurar exige que o Mestre informe explicitamente 1-3 sapos vivos; a fuga, Fora de Risco, Alado e Grupo (3 sapos) permanecem manuais.',
     ],
   },
   {
@@ -24,7 +25,7 @@ export const DEZ_SOMBRAS_FORMAS_DERIVADAS = [
     lacunas: [
       'A fórmula de composição e os gatilhos de herança são incompletos.',
       'A composição depende do Tigre Fúnebre, ficha marcada como especulativa e homebrew opcional.',
-      'Golpes Eletrificados, Cura Concentrada e Regeneração Superior permanecem manuais por falta de alcance, custo e/ou escopo operacional.',
+      'Golpes Eletrificados é executável. Cura Concentrada permanece manual porque a fonte não informa custo; Regeneração Superior permanece manual por lacunas de gatilho e frequência.',
     ],
   },
 ] as const;
@@ -52,6 +53,7 @@ export function criarFormasDerivadasDezSombras(donoCharacterId: string): Invocac
     versaoModelo: 1,
     versaoAprovada: 1,
     atributoBasePericias: 'sabedoria',
+    economiaAcoesConfigurada: { acaoComum: 1, acaoBonus: 1, acaoMovimento: 1, reacao: 1 },
     intermediario: { tipo: 'tecnica', tecnicaId: 'Dez Sombras' },
     origemAquisicao: 'Feiticeiros e Maldições — Enciclopédia Amaldiçoada v0.9, Cap. 2',
     alcanceInvocacaoM: undefined,
@@ -73,11 +75,15 @@ export function criarFormasDerivadasDezSombras(donoCharacterId: string): Invocac
       grau: 'quarto',
       custoInvocacaoPE: 6,
       requisitosFormaDerivada: [...DEZ_SOMBRAS_FORMAS_DERIVADAS[0].requisitos],
-      lacunasFormaDerivada: [...DEZ_SOMBRAS_FORMAS_DERIVADAS[0].lacunas],
-      descricao: 'Quimera de Nue e Sapo, grau 4, 6 PE, 50 PV, Defesa 21, voo e deslocamento 10,5 m. Requisitos ainda precisam de confirmação manual do Mestre. Porte e atributos não especificados; o porte exibido é provisório. Segurar, Fora de Risco, Alado e Grupo (3 sapos) permanecem manuais; a ficha não define alcance/uso completo de todos os efeitos.',
+      lacunasFormaDerivada: [
+        'Porte e atributos não são especificados; o porte Médio exibido é provisório.',
+        'A composição da quimera e a perda de membros não têm regra operacional definida.',
+        'Fuga de Segurar, Fora de Risco, Alado e Grupo (3 sapos) permanecem manuais.',
+      ],
+      descricao: 'Quimera de Nue e Sapo, grau 4, 6 PE, 50 PV, Defesa 21, voo e deslocamento 10,5 m. Requisitos ainda precisam de confirmação manual do Mestre. Porte e atributos não especificados; o porte exibido é provisório. Segurar é parcial: exige contagem de sapos vivos confirmada pelo Mestre; a fuga, Fora de Risco, Alado e Grupo permanecem manuais.',
       historico: 'Quimera de Nue e Sapo — Enciclopédia Amaldiçoada v0.9, Cap. 2, pp. 64, 66.',
       acoes: [
-        habilidadeManual('segurar', 'Segurar', 'A habilidade consta na ficha derivada; alcance, forma de selecionar e operação da língua no grupo permanecem manuais.'),
+        habilidadeManual('segurar', 'Segurar', 'Ação Simples: disputa o Luta do Abismo contra Atletismo do alvo até 9 m e aplica Agarrado em caso de sucesso. O Mestre informa a quantidade atual de sapos vivos: +5 com um, +7 com dois ou +9 com três. Não inferir a contagem pelos PV. A tentativa de fuga é indicada no início de cada turno, mas custo de ação e comparação exata permanecem manuais.', { categoriaAcao: 'acao_simples', alcanceM: 9, statusAutomacao: 'parcial' }),
         habilidadeManual('fora-de-risco', 'Fora de Risco', 'A habilidade consta na ficha derivada; reação, alvo e resolução permanecem manuais.'),
         habilidadeManual('alado', 'Alado', 'A ficha indica voo. Movimento aéreo e limites operacionais permanecem manuais.'),
         habilidadeManual('grupo', 'Grupo (3 sapos)', 'A forma inclui 3 sapos. A composição, tokens, PV partilhados e comandos não têm regra operacional definida e permanecem manuais.'),
@@ -103,12 +109,12 @@ export function criarFormasDerivadasDezSombras(donoCharacterId: string): Invocac
       custoInvocacaoPE: 7,
       requisitosFormaDerivada: [...DEZ_SOMBRAS_FORMAS_DERIVADAS[1].requisitos],
       lacunasFormaDerivada: [...DEZ_SOMBRAS_FORMAS_DERIVADAS[1].lacunas],
-      descricao: 'Forma derivada de Nue com heranças de Grande Serpente, Tigre Fúnebre e Cervo Circular; grau 2, 7 PE, 120 PV, Defesa 27, deslocamento 18 m, porte Grande. A fórmula de composição e os gatilhos são incompletos; a dependência do Tigre Fúnebre é especulativa/homebrew. Golpes Eletrificados (+11, 5d10+6 chocante), Cura Concentrada (5d10+3) e Regeneração Superior como reação ficam manuais, sem execução automática.',
+      descricao: 'Forma derivada de Nue com heranças de Grande Serpente, Tigre Fúnebre e Cervo Circular; grau 2, 7 PE, 120 PV, Defesa 27, deslocamento 18 m, porte Grande. A fórmula de composição e os gatilhos são incompletos; a dependência do Tigre Fúnebre é especulativa/homebrew. Golpes Eletrificados (+11, 5d10+6 chocante) é executável. Cura Concentrada (5d10+3) permanece manual porque o custo não está publicado; Regeneração Superior como reação também permanece manual.',
       historico: 'Forma descrita como oficial pelo RPG; composição dependente da ficha especulativa do Tigre Fúnebre — Enciclopédia Amaldiçoada v0.9, Cap. 2, pp. 64, 68.',
       acoes: [
-        habilidadeManual('golpes-eletrificados', 'Golpes Eletrificados', 'Referência publicada: +11 para acertar, 5d10+6 chocante. Alcance e demais regras de execução não especificados; ação manual sem execução automática.', { teste: 'ataque', bonusAtaque: 11, dano: '5d10+6', tipoDano: 'DCC' }),
-        habilidadeManual('cura-concentrada', 'Cura Concentrada', 'Referência publicada: 5d10+3 PV. Alcance, custo e escopo de alvos não especificados; ação manual sem execução automática.', { formulaCura: '5d10+3' }),
-        habilidadeManual('regeneracao-superior', 'Regeneração Superior', 'A ficha a lista como reação. Valor, alcance, custo e gatilho operacional não especificados; ação manual sem execução automática.', { categoriaAcao: 'reacao' }),
+        ataque({ id: 'golpes-eletrificados', nome: 'Golpes Eletrificados', dano: '5d10+6', tipoDano: 'DCC', alcanceM: 3, bonusAtaque: 11 }),
+        { ...cura({ id: 'cura-concentrada', nome: 'Cura Concentrada', formula: '5d10+3', alcanceM: 4.5, alvos: 'unico', descricaoRegra: 'Um alvo a até 4,5 m recupera 5d10+3 PV. O custo não é informado pela fonte; a execução permanece manual até decisão do Mestre.' }), statusAutomacao: 'manual' },
+        habilidadeManual('regeneracao-superior', 'Regeneração Superior', 'Ao receber dano, Agito pode usar uma reação para curar a si mesmo em valor igual à Cura Concentrada (5d10+3). A fonte não define o uso diante de múltiplas instâncias de dano nem o limite de PV; esses pontos permanecem manuais.', { categoriaAcao: 'reacao' }),
       ],
       caracteristicas: [
         { tipo: 'forma_derivada', texto: 'Não conta como indivíduo-base adicional das Dez Sombras.' },

@@ -322,6 +322,14 @@ const EconomiaInstanciaSchema = z.object({
   reacao: SaldoAcaoSchema.optional(),
 }).strict();
 
+export const OrigemSuporteHordaSchema = z.object({
+  donoId: idSchema, instanciaId: idSchema, usosAnteriores: nonNegativeIntSchema,
+  grau: z.enum(['quarto', 'terceiro', 'segundo', 'primeiro', 'especial']),
+  categoriaAcao: z.enum(['acao_simples', 'acao_bonus', 'acao_complexa', 'acao_comum']),
+  config: ConfiguracaoEfeitoSuporteInvocacaoSchema,
+}).strict();
+export type OrigemSuporteHorda = z.infer<typeof OrigemSuporteHordaSchema>;
+
 export const EfeitoSuporteAtivoInvocacaoSchema = z.object({
   id: idSchema,
   tipo: z.enum(["defesa", "acerto", "dano_adicional", "reducao_dano"]),
@@ -330,6 +338,7 @@ export const EfeitoSuporteAtivoInvocacaoSchema = z.object({
   tiposDano: z.array(TipoDanoInvocacaoSchema).max(15).optional(),
   expiraNaRodada: nonNegativeIntSchema,
   consomeNoAtaque: z.boolean().optional(),
+  suporteHorda: OrigemSuporteHordaSchema.optional(),
 }).strict().superRefine((efeito, ctx) => {
   if (efeito.tipo === "dano_adicional" && !efeito.formula) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["formula"], message: "O bônus de dano precisa de uma fórmula." });
@@ -372,6 +381,8 @@ export const ComponenteHordaInvocacaoSchema = z.object({
   grau: z.enum(["quarto", "terceiro", "segundo", "primeiro", "especial"]),
   pvAntes: finiteNumberSchema,
   pvMaximoAntes: finiteNumberSchema.min(1),
+  /** Legados usam a posição no array; novos integrantes gravam ordem explícita. */
+  ordemEntrada: nonNegativeIntSchema.optional(),
 }).strict().superRefine((componente, ctx) => {
   if (componente.pvAntes < 0 || componente.pvAntes > componente.pvMaximoAntes) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pvAntes"], message: "PV registrado do integrante está fora do intervalo válido." });
@@ -429,6 +440,25 @@ export const InstanciaInvocacaoSchema = z.object({
   pvTemporarios: nonNegativeNumberSchema.optional(),
   /** Composição congelada da Horda; hpAtual/hpMaximoAtual são o único pool de PV. */
   composicaoHorda: ComposicaoHordaInvocacaoSchema.optional(),
+  /** Resolução bloqueada até decisão da mesa; snapshot não atribui PV aos membros. */
+  perdaMembrosHordaPendente: z.object({
+    motivo: z.literal('metade_pv'),
+    quantidade: nonNegativeIntSchema,
+    pvAntes: finiteNumberSchema,
+    pvDepois: finiteNumberSchema,
+    pvMaximo: finiteNumberSchema.min(1),
+    membrosIds: z.array(idSchema).max(100),
+  }).strict().optional(),
+  limiarPerdaHorda: z.object({
+    armado: z.boolean(), curaAcumulada: nonNegativeNumberSchema,
+    pvMaximoReferencia: finiteNumberSchema.min(1), totalAtivacoes: nonNegativeIntSchema,
+  }).strict().optional(),
+  membrosHordaRemovidos: z.array(z.object({
+    modeloId: idSchema, motivo: z.literal('metade_pv'),
+    pvIndividual: nonNegativeNumberSchema, rodadaRemocao: nonNegativeIntSchema,
+    combateId: idSchema.optional(), bloqueioRodadas: nonNegativeIntSchema,
+  }).strict()).optional(),
+  eventosDanoHordaProcessados: z.array(idSchema).optional(),
   /** Vínculos de agarrão aplicados por shikigami a esta instância. */
   agarradoPorInvocacao: z.array(z.object({
     donoId: idSchema,
@@ -452,8 +482,7 @@ export const InstanciaInvocacaoSchema = z.object({
     total: nonNegativeIntSchema.optional(),
     porEfeito: z.record(z.string(), nonNegativeIntSchema),
   }).strict().optional(),
-  /** O dono ou o Mestre pode interromper a autonomia desta instância em campo. */
-  automacaoSuspensa: z.boolean().optional(),
+  usosAtaqueTurno: z.object({ rodada: nonNegativeIntSchema, total: nonNegativeIntSchema }).strict().optional(),
   /** Percurso retilíneo feito neste turno, consumido pela Investida Perfurante. */
   investidaPerfuranteTurno: z.object({
     rodada: nonNegativeIntSchema,
@@ -461,6 +490,8 @@ export const InstanciaInvocacaoSchema = z.object({
     combateId: idSchema.optional(),
     distanciaM: nonNegativeNumberSchema.max(1000),
   }).strict().optional(),
+  /** O dono ou o Mestre pode interromper a autonomia desta instância em campo. */
+  automacaoSuspensa: z.boolean().optional(),
   /** Orçamento de automações da rodada; reentrada não restaura ações já executadas. */
   usosAutomacaoRodada: z.object({
     rodada: nonNegativeIntSchema,

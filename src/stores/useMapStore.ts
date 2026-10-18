@@ -141,6 +141,8 @@ export interface Entity {
   invocationHordeId?: string;
   invocationHordeMemberIds?: string[];
   invocationHordeSizeIncreases?: number;
+  invocationEffectiveSize?: string;
+  invocationEffectiveSizeCategory?: number;
   /** Pontos de Vida Temporários do token de invocação, absorvidos antes de PV. */
   invocationTempHp?: number;
   /** Defesa e deslocamento próprios do servo (sem criar turno separado). */

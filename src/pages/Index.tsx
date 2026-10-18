@@ -221,7 +221,7 @@ export default function Index() {
                 "0 0 20px hsla(270, 100%, 50%, 0.8), 0 0 60px hsla(270, 100%, 50%, 0.4), 0 0 100px hsla(270, 100%, 50%, 0.2)",
             }}
           >
-            The Promisse
+            The Saint Promisse
           </h1>
           <p
             className="mt-3 text-muted-foreground text-lg"
