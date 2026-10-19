@@ -26,6 +26,7 @@ describe('preset Báculo Aetheris', () => {
   it('Réquiem: 18 PE, raio 9 m a 24 m, 15d10', () => {
     const a = acao('aa-aetheris-requiem');
     expect([a.custoPE, a.alcanceM, a.area?.tamanho_m, a.dano]).toEqual(['18', 24, 9, '15d10']);
+    expect([a.acao, (a as { usos_por_cena?: number }).usos_por_cena]).toEqual(['completa', 1]);
   });
   it('Ruptura: reação de 2 PE, 10d10 Sônico', () => {
     const a = acao('aa-aetheris-ruptura');

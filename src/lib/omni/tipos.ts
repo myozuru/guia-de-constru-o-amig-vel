@@ -330,7 +330,10 @@ export interface AcaoAtivaConfig {
   desfechosTR?: { falha?: DesfechoTRAtivo; sucesso?: DesfechoTRAtivo; falha_critica?: DesfechoTRAtivo };
   id: string;
   nome: string;
-  acao: 'comum' | 'bonus' | 'reacao' | 'movimento' | 'livre';
+  /** 'completa' gasta a Ação Comum e a Ação Bônus do turno. */
+  acao: 'comum' | 'bonus' | 'reacao' | 'movimento' | 'livre' | 'completa';
+  /** Máximo de usos por cena (combate). Ausente = sem limite. */
+  usos_por_cena?: number;
   /** Fórmula do custo em PE. */
   custoPE: string;
   /** 0 = sem limite. */
