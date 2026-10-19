@@ -21,7 +21,8 @@ RESOLVE = """async()=>{const m=await import('/src/stores/useAlvoMapaStore.ts');i
 const ms=window.__mapStore.getState();if(ms.pendingAoEPlacement){ms.resolveAoEPlacement({id:'t',kind:'circle',x:4*window.__D+window.__D/2,y:window.__D/2,rotation:0,length:3*window.__D,width:0,color:'red',opacity:.3});return 'area'};return ''}"""
 
 async def usar(pg, nome):
-    await pg.get_by_text("Fichas", exact=True).first.click(force=True); await pg.wait_for_timeout(1000)
+    await pg.screenshot(path=S+"antes_"+nome[:5]+".png")
+    await pg.get_by_text("Fichas", exact=True).first.click(force=True, timeout=8000); await pg.wait_for_timeout(1000)
     if not await pg.get_by_test_id("acao-ativa-" + nome).locator("visible=true").count():
         await pg.get_by_text("TESTE Especialista").first.click(); await pg.wait_for_timeout(1200)
     card = pg.get_by_test_id("acao-ativa-" + nome).locator("visible=true").first
