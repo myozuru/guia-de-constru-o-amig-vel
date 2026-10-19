@@ -58,7 +58,7 @@ async def main():
                           [os.environ['LOVABLE_BROWSER_SUPABASE_STORAGE_KEY'], os.environ['LOVABLE_BROWSER_SUPABASE_SESSION_JSON']])
         await pg.goto("http://localhost:8080")
         await pg.wait_for_function("!!(window.__charStore && window.__mapStore && window.__combatStore && window.__profileStore && window.__inventoryStore)", timeout=90000)
-        await pg.mouse.click(640, 400); await pg.wait_for_timeout(3000)
+        await pg.mouse.click(640, 400); await pg.get_by_text("Fichas", exact=True).first.wait_for(timeout=60000)
         await pg.evaluate("""(e)=>{
           const cs=window.__charStore, ms=window.__mapStore, cb=window.__combatStore;
           const D=(ms.getState().gridConfig.dpi||50); window.__D=D;
