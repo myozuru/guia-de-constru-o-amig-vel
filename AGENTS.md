@@ -44,3 +44,4 @@
 - Operações destrutivas (force push, `reset --hard`, reescrever histórico já publicado, excluir branches) exigem autorização prévia.
 - Vale o aviso do Lovable acima: nunca reescrever histórico já publicado.
 - OMNI 'Ação Completa' always costs the turn's Ação Comum + Ação Bônus (characters have 1 Comum); per-scene limits (`usos_por_cena`) live in `Character.omniUsosCena` keyed by combatId so they reset with each new combat.
+- OMNI condition effects can last until the user's next turn start (`ate_inicio_turno_usuario` → `ActiveCondition.expiraNoInicioDoTurnoDe`), cleared by the combat turn-start hook; Suspenso blocks player token movement.
