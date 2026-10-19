@@ -66,6 +66,7 @@ export function LogPanel() {
         <button
           onClick={() => setPanelCollapsed(false)}
           className="flex flex-col items-center gap-2 pt-3 text-muted-foreground hover:text-foreground transition-all duration-300"
+          aria-label="Expandir painel de logs"
           title="Expandir Logs"
         >
           <ChevronRight className="h-4 w-4" />
@@ -90,6 +91,7 @@ export function LogPanel() {
             <button
               onClick={cycleVisibility}
               className="rounded-lg p-1 text-primary transition-all duration-300 hover:bg-primary/10"
+              aria-label={'Alterar visibilidade dos logs: ' + visibilityMeta.label}
               title={visibilityMeta.title}
             >
               {(() => {
@@ -106,6 +108,7 @@ export function LogPanel() {
                 ? 'text-primary bg-primary/10 hover:bg-primary/20'
                 : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
             )}
+            aria-label={showGameTime ? 'Mostrando hora fictícia; alternar para hora real' : 'Mostrando hora real; alternar para hora fictícia'}
             title={showGameTime ? 'Mostrando hora fictícia — clique para hora real' : 'Mostrando hora real — clique para hora fictícia'}
           >
             {showGameTime ? <Gamepad2 className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
@@ -114,6 +117,7 @@ export function LogPanel() {
             <button
               onClick={() => { playDeleteSound(); clearLogs(); }}
               className="rounded-lg p-1 text-muted-foreground transition-all duration-300 hover:bg-destructive/20 hover:text-destructive"
+              aria-label="Limpar logs"
               title="Limpar logs"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -122,6 +126,7 @@ export function LogPanel() {
           <button
             onClick={() => setPanelCollapsed(true)}
             className="rounded-lg p-1 text-muted-foreground transition-all duration-300 hover:bg-secondary hover:text-foreground"
+            aria-label="Recolher painel de logs"
             title="Minimizar"
           >
             <ChevronLeft className="h-3.5 w-3.5" />

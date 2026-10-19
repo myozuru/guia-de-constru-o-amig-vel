@@ -89,13 +89,13 @@ export function ChronosModule() {
       </h1>
 
       {/* Clock */}
-      <div className="rounded-xl border border-border bg-card p-8 card-enigmatic glow-border border-glow flex flex-col items-center">
+      <div className="w-full rounded-xl border border-border bg-card p-4 sm:p-8 card-enigmatic glow-border border-glow flex flex-col items-center">
         <AnalogClock size={300} />
         <SmoothTimeDisplay
-          className="mt-5 text-center text-3xl text-foreground tracking-[0.15em] glow-text-strong"
+          className="mt-5 text-center text-2xl sm:text-3xl text-foreground tracking-[0.08em] sm:tracking-[0.15em] tabular-nums glow-text-strong"
           style={{ fontFamily: "'Cinzel Decorative', serif" }}
         />
-        <div className="mt-2 text-center text-base text-muted-foreground flex items-center justify-center gap-1" style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: 'italic' }}>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-center text-sm text-muted-foreground sm:text-base" style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: 'italic' }}>
           Dia {store.day} · Mês {store.month} ·{' '}
           <span className="relative inline-block">
             {isPlayer ? (
@@ -148,6 +148,9 @@ export function ChronosModule() {
           <div className="mt-5 flex flex-col items-center gap-3">
             <div className="flex items-center justify-center gap-3">
               <button
+                type="button"
+                aria-label={store.isRunning ? 'Pausar relógio' : 'Iniciar relógio'}
+                aria-pressed={store.isRunning}
                 onClick={() => { store.setIsRunning(!store.isRunning); playClockClickSound(); }}
                 className={cn(
                   'flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300',
@@ -265,6 +268,8 @@ export function ChronosModule() {
                 return (
                   <button
                     key={char.id}
+                    type="button"
+                    aria-pressed={selected}
                     onClick={() => { toggleRestTarget(char.id); playClockClickSound(); }}
                     className={cn(
                       'rounded-full border px-3 py-1.5 text-sm transition-all duration-300 flex items-center gap-1.5',

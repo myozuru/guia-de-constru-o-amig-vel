@@ -22,7 +22,7 @@ export function LightSettings() {
   return (
     <div className="rounded-lg border border-border p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Light Settings</h3>
+        <h3 className="text-sm font-semibold">Configurações da luz</h3>
         <Button
           size="sm"
           variant="ghost"
@@ -34,8 +34,9 @@ export function LightSettings() {
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">Range — {Math.round(light.radius)} px</Label>
+        <Label className="text-xs">Alcance — {Math.round(light.radius)} px</Label>
         <Slider
+          aria-label="Alcance da luz em pixels"
           value={[light.radius]}
           min={40}
           max={1200}
@@ -46,34 +47,36 @@ export function LightSettings() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label className="text-xs">Angle</Label>
+          <Label className="text-xs">Ângulo</Label>
           <div className="flex gap-1">
             {(["full", "cone"] as LightShape[]).map((s) => (
               <Button
                 key={s}
                 size="sm"
                 variant={light.shape === s ? "default" : "outline"}
+                aria-pressed={light.shape === s}
                 onClick={() => set("shape", s)}
                 className="flex-1 h-8 text-xs"
               >
-                {s === "full" ? "Circle" : "Cone"}
+                {s === "full" ? "Círculo" : "Cone"}
               </Button>
             ))}
           </div>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">Edge</Label>
+          <Label className="text-xs">Borda</Label>
           <div className="flex gap-1">
             {(["solid", "blurred"] as LightEdge[]).map((e) => (
               <Button
                 key={e}
                 size="sm"
                 variant={light.edge === e ? "default" : "outline"}
+                aria-pressed={light.edge === e}
                 onClick={() => set("edge", e)}
                 className="flex-1 h-8 text-xs"
               >
-                {e === "solid" ? "Solid" : "Blurred"}
+                {e === "solid" ? "Sólida" : "Difusa"}
               </Button>
             ))}
           </div>
@@ -87,6 +90,7 @@ export function LightSettings() {
               Abertura — {Math.round((light.coneAngle * 180) / Math.PI)}°
             </Label>
             <Slider
+              aria-label="Abertura do cone em graus"
               value={[(light.coneAngle * 180) / Math.PI]}
               min={10}
               max={350}
@@ -99,6 +103,7 @@ export function LightSettings() {
               Direção — {Math.round((light.coneDirection * 180) / Math.PI)}°
             </Label>
             <Slider
+              aria-label="Direção do cone em graus"
               value={[(light.coneDirection * 180) / Math.PI]}
               min={-180}
               max={180}
@@ -110,17 +115,18 @@ export function LightSettings() {
       )}
 
       <div className="space-y-1">
-        <Label className="text-xs">Type</Label>
+        <Label className="text-xs">Tipo</Label>
         <div className="flex gap-1">
           {(["primary", "secondary"] as LightType[]).map((t) => (
             <Button
               key={t}
               size="sm"
               variant={light.type === t ? "default" : "outline"}
+              aria-pressed={light.type === t}
               onClick={() => set("type", t)}
               className="flex-1 h-8 text-xs"
             >
-              {t === "primary" ? "Primary" : "Secondary"}
+              {t === "primary" ? "Primária" : "Secundária"}
             </Button>
           ))}
         </div>
@@ -135,7 +141,7 @@ export function LightSettings() {
         onClick={() => removeLight(light.id)}
         className="w-full"
       >
-        Remove Light
+        Remover luz
       </Button>
     </div>
   );

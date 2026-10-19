@@ -76,6 +76,7 @@ export function FogToolbar() {
       disabled={disabled}
       title={title}
       aria-label={title}
+      aria-pressed={!!isActive}
       className="h-8 w-8"
     >
       {children}

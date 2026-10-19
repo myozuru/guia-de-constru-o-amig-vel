@@ -14,6 +14,7 @@ interface Props {
   active?: boolean;
   disabled?: boolean;
   title: string;
+  label?: string;
   /** Variante "ghost" — sem fundo ativo, só ícone (para top bar). */
   variant?: 'rail' | 'ghost';
 }
@@ -25,10 +26,12 @@ export function RadioIconButton({
   active,
   disabled,
   title,
+  label,
   variant = 'rail',
 }: Props) {
-  const base =
-    'h-9 w-9 rounded-md flex items-center justify-center transition-colors shrink-0';
+  const base = label
+    ? 'h-11 min-w-11 w-auto px-2 rounded-md flex items-center justify-center gap-1.5 text-[11px] font-medium whitespace-nowrap transition-colors shrink-0'
+    : 'h-9 w-9 rounded-md flex items-center justify-center transition-colors shrink-0';
   let state: string;
   if (disabled) {
     state = 'text-muted-foreground/40 cursor-not-allowed';
@@ -45,11 +48,13 @@ export function RadioIconButton({
     <button
       type="button"
       title={title}
+      aria-label={title}
       onClick={disabled ? undefined : onClick}
       onContextMenu={disabled ? undefined : onContextMenu}
       className={`${base} ${state}`}
     >
       {children}
+      {label && <span>{label}</span>}
     </button>
   );
 }

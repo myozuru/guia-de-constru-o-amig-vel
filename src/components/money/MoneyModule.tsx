@@ -378,15 +378,15 @@ function PlayerMoneyView() {
               <div className="flex gap-2">
                 <button
                   onClick={() => acceptInvite(inv.id)}
-                  className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground"
                 >
-                  <Check className="h-3.5 w-3.5" />
+                  <Check aria-hidden="true" className="h-3.5 w-3.5" /> Aceitar
                 </button>
                 <button
                   onClick={() => declineInvite(inv.id)}
-                  className="rounded-md border border-border px-2 py-1 text-xs"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X aria-hidden="true" className="h-3.5 w-3.5" /> Recusar
                 </button>
               </div>
             </div>

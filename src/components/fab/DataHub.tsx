@@ -148,19 +148,29 @@ export function DataHub({ open, onClose }: { open: boolean; onClose: () => void 
   const showApplySection = (hasResults || (customNum > 0 && !hasDice)) && canApply;
 
   return (
-    <div className="fixed bottom-20 right-6 z-50 w-72 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl animate-scale-in">
+    <div className="fixed bottom-20 right-6 z-50 w-72 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl animate-scale-in">
       <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-3 py-1.5 z-10">
         <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
           <Dice1 className="h-3.5 w-3.5 text-primary" /> Hub de Dados
         </span>
         <div className="flex items-center gap-0.5">
-          <button onClick={() => setShowCalc(!showCalc)} className="rounded p-1 text-muted-foreground hover:bg-secondary">
+          <button
+            aria-label={showCalc ? 'Ocultar calculadora' : 'Mostrar calculadora'}
+            title={showCalc ? 'Ocultar calculadora' : 'Mostrar calculadora'}
+            onClick={() => setShowCalc(!showCalc)}
+            className="rounded p-1 text-muted-foreground hover:bg-secondary"
+          >
             <Calculator className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => { playDeleteSound(); clearAll(); }} className="rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive">
+          <button
+            aria-label="Limpar painel do Hub de Dados"
+            title="Limpar painel do Hub de Dados"
+            onClick={() => { playDeleteSound(); clearAll(); }}
+            className="rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+          >
             <Trash2 className="h-3 w-3" />
           </button>
-          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary">
+          <button aria-label="Fechar Hub de Dados" title="Fechar Hub de Dados" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

@@ -79,14 +79,14 @@ export function AuthScreen() {
   const input = 'h-12 rounded-lg border-border/70 bg-background/70 pl-10 pr-11 text-sm shadow-inner';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-background px-4 py-8 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-x-hidden overflow-y-auto bg-background px-4 py-8 animate-fade-in auth-screen">
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <JjkSwirl size={820} className="opacity-[0.08]" />
+        <JjkSwirl size={820} animated={false} className="opacity-[0.08]" />
       </div>
       <div className="pointer-events-none absolute left-4 top-4 h-12 w-12 border-l border-t border-border/70" aria-hidden />
       <div className="pointer-events-none absolute bottom-4 right-4 h-12 w-12 border-b border-r border-border/70" aria-hidden />
 
-      <section className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-2xl border border-border/70 bg-card/80 p-7 shadow-[var(--shadow-occult)] backdrop-blur-2xl sm:p-9 animate-scale-in">
+      <section className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-2xl border border-border/70 bg-card/80 p-7 shadow-[var(--shadow-occult)] backdrop-blur-2xl sm:p-9 animate-scale-in auth-card">
         <div className="pointer-events-none absolute inset-0 rounded-2xl border border-foreground/5" aria-hidden />
         <header className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-foreground glow-text tracking-[0.18em]">THE SAINT PROMISSE</h1>

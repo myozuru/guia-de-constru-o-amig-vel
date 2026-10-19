@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useItemStore } from '@/stores/useItemStore';
 import { useCharacterStore } from '@/stores/useCharacterStore';
 import { useInventoryStore } from '@/stores/useInventoryStore';
@@ -175,6 +175,7 @@ function ItemCard({
   onSpend: () => void;
   onEdit: () => void;
 }) {
+  const detailsId = useId();
   const { toast } = useToast();
   const inventoryAdd = useInventoryStore((s) => s.add);
   const omniEntities = useOmniEntidadesStore((s) => s.entidades);
@@ -202,20 +203,23 @@ function ItemCard({
   return (
     <div className="rounded-lg border border-border overflow-hidden card-enigmatic">
       <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={detailsId}
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-primary/5 transition-all duration-300"
       >
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-foreground truncate text-sm">
+        <span className="flex min-w-0 flex-1 flex-col text-left">
+          <span className="block truncate text-sm font-semibold text-foreground">
             {item.name}
             {isAccessory && (
-              <span className="ml-1.5 text-xs rounded-full bg-primary/15 border border-primary/30 px-1.5 py-0.5 text-primary font-normal">
+              <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-xs font-normal text-primary">
                 {ITEM_SLOT_LABELS[item.slotType]}
               </span>
             )}
-          </div>
-          <div className="text-xs text-muted-foreground">{isAccessory ? ITEM_SLOT_LABELS[item.slotType] : 'Item Geral'}</div>
-        </div>
+          </span>
+          <span className="block text-xs text-muted-foreground">{isAccessory ? ITEM_SLOT_LABELS[item.slotType] : 'Item Geral'}</span>
+        </span>
         {assignedChars.length > 0 && (
           <div className="flex gap-1 flex-wrap max-w-[200px]">
             {assignedChars.map((c) => (
@@ -229,6 +233,9 @@ function ItemCard({
       </button>
 
       <div
+        id={detailsId}
+        aria-hidden={!expanded}
+        inert={!expanded}
         className="grid transition-[grid-template-rows,opacity] duration-500 ease-in-out"
         style={{ gridTemplateRows: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}
       >

@@ -16,8 +16,6 @@ export function AnalogClock({ size: canvasSize = 280 }: { size?: number }) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = canvasSize * dpr;
     canvas.height = canvasSize * dpr;
-    canvas.style.width = `${canvasSize}px`;
-    canvas.style.height = `${canvasSize}px`;
     ctx.scale(dpr, dpr);
 
     const faceCanvas = document.createElement('canvas');
@@ -73,7 +71,7 @@ export function AnalogClock({ size: canvasSize = 280 }: { size?: number }) {
     };
   }, [canvasSize]);
 
-  return <canvas ref={canvasRef} style={{ width: canvasSize, height: canvasSize }} className="mx-auto" />;
+  return <canvas ref={canvasRef} width={canvasSize} height={canvasSize} className="mx-auto block aspect-square h-auto w-full max-w-[300px]" />;
 }
 
 function drawClockFace(ctx: CanvasRenderingContext2D, size: number) {

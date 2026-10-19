@@ -55,6 +55,7 @@ export function MiniClock() {
         <SmoothTimeDisplay className="text-xs text-foreground tracking-[0.1em] glow-text text-center tabular-nums whitespace-nowrap" style={{ fontFamily: "'Cinzel Decorative', serif", fontSize: '11px', width: '7.2em', display: 'inline-block' }} />
         {!isPlayer && (
           <button
+            aria-label={store.isRunning ? 'Pausar relógio da campanha' : 'Retomar relógio da campanha'}
             onClick={() => { playClockClickSound(); store.setIsRunning(!store.isRunning); }}
             className={cn(
               'h-5 w-5 flex items-center justify-center rounded-full transition-all duration-300',
@@ -66,6 +67,9 @@ export function MiniClock() {
         )}
         {!isPlayer && (
           <button
+            aria-label={expanded ? 'Recolher controles do relógio' : 'Expandir controles do relógio'}
+            aria-expanded={expanded}
+            aria-controls="mini-clock-controls"
             onClick={() => setExpanded(!expanded)}
             className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:bg-secondary transition-all duration-300"
           >
@@ -77,6 +81,9 @@ export function MiniClock() {
       {/* Expanded panel — Mestre apenas */}
       {!isPlayer && (
       <div
+        id="mini-clock-controls"
+        aria-hidden={!expanded}
+        inert={!expanded}
         className={cn(
           'absolute left-0 top-full mt-1 z-[60] w-56 bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-xl overflow-hidden transition-all duration-500 ease-in-out',
           expanded ? 'max-h-80 opacity-100 px-2.5 py-2' : 'max-h-0 opacity-0'

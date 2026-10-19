@@ -182,41 +182,49 @@ export default function Index() {
   if (showSplash) {
     return (
       <div
-        className="fixed inset-0 z-[100] bg-background flex items-center justify-center overflow-hidden cursor-pointer select-none"
+        className="fixed inset-0 z-[100] bg-background flex items-center justify-center overflow-hidden cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background splash-screen"
+        role="button"
+        tabIndex={0}
+        aria-label="Entrar em The Saint Promisse"
         onClick={handleSplashClick}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleSplashClick();
+          }
+        }}
       >
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <JjkSwirl
             size={600}
-            className="transition-all ease-out"
-            style={{ transitionDuration: '3000ms', opacity: 0.1, transform: "scale(1) rotate(0deg)" }}
+            animated={false}
+            className="splash-swirl"
+            style={{ opacity: 0.1 }}
             
           />
         </div>
 
         {flashActive && (
           <div
-            className="absolute inset-0 z-50 pointer-events-none"
+            className="absolute inset-0 z-50 pointer-events-none splash-flash"
             style={{
               background:
-                "radial-gradient(circle at center, hsla(270, 100%, 50%, 0.9), hsla(270, 100%, 50%, 0.5), transparent 70%)",
-              animation: "splash-flash 1.2s ease-out forwards",
+                "radial-gradient(circle at center, var(--splash-flash-start), var(--splash-flash-middle), transparent 70%)",
             }}
           />
         )}
 
         <div
-          className="text-center z-10 transition-all ease-out"
+          className="splash-content text-center z-10"
           style={{
-            transitionDuration: '1500ms',
             opacity: fadingOut ? 0 : 1,
-            transform: fadingOut ? "scale(1.2)" : "scale(1)",
+            transform: fadingOut ? "scale(0.985) translateY(-6px)" : "scale(1)",
           }}
         >
           <h1
-            className="text-4xl md:text-6xl text-primary tracking-[0.2em] neon-flicker"
+            className="mx-auto w-[calc(100vw-2rem)] text-[clamp(2rem,5vw,3.75rem)] leading-[1.2] text-primary tracking-[0.04em] md:tracking-[0.06em] text-balance splash-title"
             style={{
-              fontFamily: "'Cinzel Decorative', serif",
+              fontFamily: "'Cinzel Decorative', 'Cinzel', serif",
               textShadow:
                 "0 0 20px hsla(270, 100%, 50%, 0.8), 0 0 60px hsla(270, 100%, 50%, 0.4), 0 0 100px hsla(270, 100%, 50%, 0.2)",
             }}
@@ -224,13 +232,13 @@ export default function Index() {
             The Saint Promisse
           </h1>
           <p
-            className="mt-3 text-muted-foreground text-lg"
-            style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}
+            className="mt-3 text-[clamp(1.125rem,2vw,1.375rem)] leading-[1.5] text-muted-foreground splash-subtitle"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic" }}
           >
             Seja Bem-Vindo
           </p>
           {!flashActive && (
-            <p className="mt-8 text-xs text-muted-foreground animate-pulse">Clique em qualquer lugar para entrar</p>
+            <p className="mx-auto mt-8 max-w-[calc(100vw-3rem)] px-4 text-sm font-medium leading-[1.6] text-muted-foreground text-pretty md:text-base splash-invitation" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>Clique ou pressione Enter ou Espaço para entrar</p>
           )}
         </div>
       </div>
@@ -259,7 +267,7 @@ export default function Index() {
           style={{
             width: '100%',
             paddingTop: mapaImmersive ? 0 : '3.5rem',
-            paddingLeft: mapaImmersive ? 0 : (isMobile ? '0.5rem' : (panelCollapsed ? '3rem' : '17rem')),
+            paddingLeft: mapaImmersive ? 0 : (isMobile ? (panelCollapsed ? '3rem' : '0.5rem') : (panelCollapsed ? '3rem' : '17rem')),
             paddingRight: mapaImmersive ? 0 : '1rem',
             paddingBottom: mapaImmersive ? 0 : (panelCollapsed ? '5rem' : '6rem'),
           }}
@@ -274,7 +282,13 @@ export default function Index() {
                willChange: transitioning ? 'opacity, transform' : 'auto',
             }}
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={(
+                <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground" role="status" aria-live="polite">
+                  Carregando módulo…
+                </div>
+              )}
+            >
               {(Array.from(mountedTabs) as TabId[]).map((id) => {
                 const Module = MODULES[id];
                 const isActive = id === displayedTab;
@@ -294,16 +308,18 @@ export default function Index() {
       {!mapaImmersive && (
         <div className="fixed bottom-4 sm:bottom-6 right-20 sm:right-24 z-50 flex items-center gap-1 rounded-full bg-card border border-border shadow-lg px-2 py-1">
           <button
+            aria-label="Diminuir zoom"
             onClick={zoomDown}
             disabled={zoomIndex === 0}
             className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
           >
             <ZoomOut className="h-4 w-4" />
           </button>
-          <span className="text-xs font-mono text-muted-foreground w-8 text-center">
+          <span aria-live="polite" aria-atomic="true" className="text-xs font-mono text-muted-foreground w-8 text-center">
             {ZOOM_LABELS[zoomIndex]}
           </span>
           <button
+            aria-label="Aumentar zoom"
             onClick={zoomUp}
             disabled={zoomIndex === ZOOM_SCALES.length - 1}
             className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
@@ -315,6 +331,8 @@ export default function Index() {
 
       {!mapaImmersive && (
         <button
+          aria-label={hubOpen ? "Fechar painel de dados" : "Abrir painel de dados"}
+          aria-expanded={hubOpen}
           onClick={() => setHubOpen(!hubOpen)}
           className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg glow-primary-strong hover:scale-110 transition-all duration-300"
         >

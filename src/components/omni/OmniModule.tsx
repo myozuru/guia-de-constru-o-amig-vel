@@ -477,6 +477,7 @@ export function OmniModule() {
                     size="sm"
                     variant="ghost"
                     className="h-7 w-7 p-0"
+                    aria-label={'Aplicar efeito ' + e.nome}
                     title={`Aplicar efeito${sourceId ? ` (origem: ${characters.find(c => c.id === sourceId)?.name})` : ''}${targetId ? ` → ${characters.find(c => c.id === targetId)?.name}` : ''}`}
                     onClick={() => {
                       useOmniRuntimeStore.getState().aplicarEfeito(e, {
@@ -488,13 +489,13 @@ export function OmniModule() {
                   >
                     <Play className="h-3.5 w-3.5 text-primary" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditando(e)}>
+                  <Button size="sm" variant="ghost" aria-label={'Editar ' + e.nome} title={'Editar ' + e.nome} className="h-7 w-7 p-0" onClick={() => setEditando(e)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => duplicar(e)}>
+                  <Button size="sm" variant="ghost" aria-label={'Duplicar ' + e.nome} title={'Duplicar ' + e.nome} className="h-7 w-7 p-0" onClick={() => duplicar(e)}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => removerEntidade(e.id)}>
+                  <Button size="sm" variant="ghost" aria-label={'Excluir ' + e.nome} title={'Excluir ' + e.nome} className="h-7 w-7 p-0" onClick={() => removerEntidade(e.id)}>
                     <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
                   </Button>
                 </div>

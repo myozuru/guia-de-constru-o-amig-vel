@@ -414,12 +414,13 @@ export function WorldMapView() {
                     {isMaster && (
                       <button
                         type="button"
-                        title="Tirar do mapa"
+                        title={'Remover marcador: ' + b.nome}
+                        aria-label={'Remover marcador: ' + b.nome}
                         onClick={(e) => {
                           e.stopPropagation();
                           removeMarker(m.id);
                         }}
-                        className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground group-hover:flex"
+                        className="absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-80 shadow-md transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -442,8 +443,10 @@ export function WorldMapView() {
               </button>
             </div>
 
-            <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-1 rounded-md bg-background/75 px-2 py-1 text-xs text-muted-foreground">
-              <MousePointerClick className="h-3 w-3" /> Arraste livremente · roda para zoom · botão direito marca o local
+            <div className="pointer-events-none absolute bottom-3 left-3 flex max-w-[90%] flex-wrap items-center gap-x-1 gap-y-0.5 rounded-md bg-background/75 px-2 py-1 text-xs text-muted-foreground">
+              <MousePointerClick className="h-3 w-3 shrink-0" aria-hidden />
+              <span>Arraste livremente · roda para zoom · botão direito marca o local.</span>
+              {isMaster && <span className="basis-full pl-4 text-[10px]">Mestre: arraste marcadores para mover; use × para remover.</span>}
             </div>
           </div>
 

@@ -1,0 +1,572 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T17:54:12Z",
+  "title": "Design System: The Saint Promisse — TP Fichas",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "--background",
+        "canonical": "hsl(265 28% 6%)",
+        "tonalRamp": [
+          "oklch(15% 0.019 303.4)",
+          "oklch(25% 0.019 303.4)",
+          "oklch(35% 0.019 303.4)",
+          "oklch(45% 0.019 303.4)",
+          "oklch(55% 0.019 303.4)",
+          "oklch(65% 0.019 303.4)",
+          "oklch(78% 0.019 303.4)",
+          "oklch(95% 0.019 303.4)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "--foreground",
+        "canonical": "hsl(270 20% 96%)",
+        "tonalRamp": [
+          "oklch(15% 0.006 308.4)",
+          "oklch(25% 0.006 308.4)",
+          "oklch(35% 0.006 308.4)",
+          "oklch(45% 0.006 308.4)",
+          "oklch(55% 0.006 308.4)",
+          "oklch(65% 0.006 308.4)",
+          "oklch(78% 0.006 308.4)",
+          "oklch(95% 0.006 308.4)"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "--card",
+        "canonical": "hsl(265 25% 9%)",
+        "tonalRamp": [
+          "oklch(15% 0.024 303.3)",
+          "oklch(25% 0.024 303.3)",
+          "oklch(35% 0.024 303.3)",
+          "oklch(45% 0.024 303.3)",
+          "oklch(55% 0.024 303.3)",
+          "oklch(65% 0.024 303.3)",
+          "oklch(78% 0.024 303.3)",
+          "oklch(95% 0.024 303.3)"
+        ]
+      },
+      "card-foreground": {
+        "role": "neutral",
+        "displayName": "--card-foreground",
+        "canonical": "hsl(270 18% 96%)",
+        "tonalRamp": [
+          "oklch(15% 0.005 308.4)",
+          "oklch(25% 0.005 308.4)",
+          "oklch(35% 0.005 308.4)",
+          "oklch(45% 0.005 308.4)",
+          "oklch(55% 0.005 308.4)",
+          "oklch(65% 0.005 308.4)",
+          "oklch(78% 0.005 308.4)",
+          "oklch(95% 0.005 308.4)"
+        ]
+      },
+      "popover": {
+        "role": "neutral",
+        "displayName": "--popover",
+        "canonical": "hsl(265 28% 8%)",
+        "tonalRamp": [
+          "oklch(15% 0.024 303.1)",
+          "oklch(25% 0.024 303.1)",
+          "oklch(35% 0.024 303.1)",
+          "oklch(45% 0.024 303.1)",
+          "oklch(55% 0.024 303.1)",
+          "oklch(65% 0.024 303.1)",
+          "oklch(78% 0.024 303.1)",
+          "oklch(95% 0.024 303.1)"
+        ]
+      },
+      "popover-foreground": {
+        "role": "neutral",
+        "displayName": "--popover-foreground",
+        "canonical": "hsl(270 18% 96%)",
+        "tonalRamp": [
+          "oklch(15% 0.005 308.4)",
+          "oklch(25% 0.005 308.4)",
+          "oklch(35% 0.005 308.4)",
+          "oklch(45% 0.005 308.4)",
+          "oklch(55% 0.005 308.4)",
+          "oklch(65% 0.005 308.4)",
+          "oklch(78% 0.005 308.4)",
+          "oklch(95% 0.005 308.4)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "--primary",
+        "canonical": "hsl(268 85% 62%)",
+        "tonalRamp": [
+          "oklch(15% 0.234 300.8)",
+          "oklch(25% 0.234 300.8)",
+          "oklch(35% 0.234 300.8)",
+          "oklch(45% 0.234 300.8)",
+          "oklch(55% 0.234 300.8)",
+          "oklch(65% 0.234 300.8)",
+          "oklch(78% 0.234 300.8)",
+          "oklch(95% 0.234 300.8)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "primary",
+        "displayName": "--primary-foreground",
+        "canonical": "hsl(270 30% 98%)",
+        "tonalRamp": [
+          "oklch(15% 0.004 308.4)",
+          "oklch(25% 0.004 308.4)",
+          "oklch(35% 0.004 308.4)",
+          "oklch(45% 0.004 308.4)",
+          "oklch(55% 0.004 308.4)",
+          "oklch(65% 0.004 308.4)",
+          "oklch(78% 0.004 308.4)",
+          "oklch(95% 0.004 308.4)"
+        ]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "--secondary",
+        "canonical": "hsl(265 18% 14%)",
+        "tonalRamp": [
+          "oklch(15% 0.025 303.6)",
+          "oklch(25% 0.025 303.6)",
+          "oklch(35% 0.025 303.6)",
+          "oklch(45% 0.025 303.6)",
+          "oklch(55% 0.025 303.6)",
+          "oklch(65% 0.025 303.6)",
+          "oklch(78% 0.025 303.6)",
+          "oklch(95% 0.025 303.6)"
+        ]
+      },
+      "secondary-foreground": {
+        "role": "secondary",
+        "displayName": "--secondary-foreground",
+        "canonical": "hsl(270 14% 92%)",
+        "tonalRamp": [
+          "oklch(15% 0.008 308.4)",
+          "oklch(25% 0.008 308.4)",
+          "oklch(35% 0.008 308.4)",
+          "oklch(45% 0.008 308.4)",
+          "oklch(55% 0.008 308.4)",
+          "oklch(65% 0.008 308.4)",
+          "oklch(78% 0.008 308.4)",
+          "oklch(95% 0.008 308.4)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "--muted",
+        "canonical": "hsl(265 14% 16%)",
+        "tonalRamp": [
+          "oklch(15% 0.022 303.9)",
+          "oklch(25% 0.022 303.9)",
+          "oklch(35% 0.022 303.9)",
+          "oklch(45% 0.022 303.9)",
+          "oklch(55% 0.022 303.9)",
+          "oklch(65% 0.022 303.9)",
+          "oklch(78% 0.022 303.9)",
+          "oklch(95% 0.022 303.9)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "--muted-foreground",
+        "canonical": "hsl(270 10% 68%)",
+        "tonalRamp": [
+          "oklch(15% 0.025 308.1)",
+          "oklch(25% 0.025 308.1)",
+          "oklch(35% 0.025 308.1)",
+          "oklch(45% 0.025 308.1)",
+          "oklch(55% 0.025 308.1)",
+          "oklch(65% 0.025 308.1)",
+          "oklch(78% 0.025 308.1)",
+          "oklch(95% 0.025 308.1)"
+        ]
+      },
+      "accent": {
+        "role": "secondary",
+        "displayName": "--accent",
+        "canonical": "hsl(42 78% 58%)",
+        "tonalRamp": [
+          "oklch(15% 0.141 84.7)",
+          "oklch(25% 0.141 84.7)",
+          "oklch(35% 0.141 84.7)",
+          "oklch(45% 0.141 84.7)",
+          "oklch(55% 0.141 84.7)",
+          "oklch(65% 0.141 84.7)",
+          "oklch(78% 0.141 84.7)",
+          "oklch(95% 0.141 84.7)"
+        ]
+      },
+      "accent-foreground": {
+        "role": "secondary",
+        "displayName": "--accent-foreground",
+        "canonical": "hsl(265 40% 8%)",
+        "tonalRamp": [
+          "oklch(15% 0.034 302.2)",
+          "oklch(25% 0.034 302.2)",
+          "oklch(35% 0.034 302.2)",
+          "oklch(45% 0.034 302.2)",
+          "oklch(55% 0.034 302.2)",
+          "oklch(65% 0.034 302.2)",
+          "oklch(78% 0.034 302.2)",
+          "oklch(95% 0.034 302.2)"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "--destructive",
+        "canonical": "hsl(0 72% 50%)",
+        "tonalRamp": [
+          "oklch(15% 0.216 27.5)",
+          "oklch(25% 0.216 27.5)",
+          "oklch(35% 0.216 27.5)",
+          "oklch(45% 0.216 27.5)",
+          "oklch(55% 0.216 27.5)",
+          "oklch(65% 0.216 27.5)",
+          "oklch(78% 0.216 27.5)",
+          "oklch(95% 0.216 27.5)"
+        ]
+      },
+      "destructive-foreground": {
+        "role": "tertiary",
+        "displayName": "--destructive-foreground",
+        "canonical": "hsl(0 0% 100%)",
+        "tonalRamp": [
+          "oklch(15% 0.000 89.9)",
+          "oklch(25% 0.000 89.9)",
+          "oklch(35% 0.000 89.9)",
+          "oklch(45% 0.000 89.9)",
+          "oklch(55% 0.000 89.9)",
+          "oklch(65% 0.000 89.9)",
+          "oklch(78% 0.000 89.9)",
+          "oklch(95% 0.000 89.9)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "--border",
+        "canonical": "hsl(268 22% 18%)",
+        "tonalRamp": [
+          "oklch(15% 0.039 305.4)",
+          "oklch(25% 0.039 305.4)",
+          "oklch(35% 0.039 305.4)",
+          "oklch(45% 0.039 305.4)",
+          "oklch(55% 0.039 305.4)",
+          "oklch(65% 0.039 305.4)",
+          "oklch(78% 0.039 305.4)",
+          "oklch(95% 0.039 305.4)"
+        ]
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "--input",
+        "canonical": "hsl(268 22% 16%)",
+        "tonalRamp": [
+          "oklch(15% 0.035 305.5)",
+          "oklch(25% 0.035 305.5)",
+          "oklch(35% 0.035 305.5)",
+          "oklch(45% 0.035 305.5)",
+          "oklch(55% 0.035 305.5)",
+          "oklch(65% 0.035 305.5)",
+          "oklch(78% 0.035 305.5)",
+          "oklch(95% 0.035 305.5)"
+        ]
+      },
+      "ring": {
+        "role": "primary",
+        "displayName": "--ring",
+        "canonical": "hsl(268 85% 62%)",
+        "tonalRamp": [
+          "oklch(15% 0.234 300.8)",
+          "oklch(25% 0.234 300.8)",
+          "oklch(35% 0.234 300.8)",
+          "oklch(45% 0.234 300.8)",
+          "oklch(55% 0.234 300.8)",
+          "oklch(65% 0.234 300.8)",
+          "oklch(78% 0.234 300.8)",
+          "oklch(95% 0.234 300.8)"
+        ]
+      },
+      "hp": {
+        "role": "tertiary",
+        "displayName": "--hp",
+        "canonical": "hsl(0 75% 55%)",
+        "tonalRamp": [
+          "oklch(15% 0.208 26.2)",
+          "oklch(25% 0.208 26.2)",
+          "oklch(35% 0.208 26.2)",
+          "oklch(45% 0.208 26.2)",
+          "oklch(55% 0.208 26.2)",
+          "oklch(65% 0.208 26.2)",
+          "oklch(78% 0.208 26.2)",
+          "oklch(95% 0.208 26.2)"
+        ]
+      },
+      "pe": {
+        "role": "tertiary",
+        "displayName": "--pe",
+        "canonical": "hsl(268 85% 62%)",
+        "tonalRamp": [
+          "oklch(15% 0.234 300.8)",
+          "oklch(25% 0.234 300.8)",
+          "oklch(35% 0.234 300.8)",
+          "oklch(45% 0.234 300.8)",
+          "oklch(55% 0.234 300.8)",
+          "oklch(65% 0.234 300.8)",
+          "oklch(78% 0.234 300.8)",
+          "oklch(95% 0.234 300.8)"
+        ]
+      },
+      "shield-color": {
+        "role": "tertiary",
+        "displayName": "--shield-color",
+        "canonical": "hsl(220 60% 60%)",
+        "tonalRamp": [
+          "oklch(15% 0.132 263.0)",
+          "oklch(25% 0.132 263.0)",
+          "oklch(35% 0.132 263.0)",
+          "oklch(45% 0.132 263.0)",
+          "oklch(55% 0.132 263.0)",
+          "oklch(65% 0.132 263.0)",
+          "oklch(78% 0.132 263.0)",
+          "oklch(95% 0.132 263.0)"
+        ]
+      },
+      "neon-green": {
+        "role": "tertiary",
+        "displayName": "--neon-green",
+        "canonical": "hsl(150 70% 55%)",
+        "tonalRamp": [
+          "oklch(15% 0.174 156.3)",
+          "oklch(25% 0.174 156.3)",
+          "oklch(35% 0.174 156.3)",
+          "oklch(45% 0.174 156.3)",
+          "oklch(55% 0.174 156.3)",
+          "oklch(65% 0.174 156.3)",
+          "oklch(78% 0.174 156.3)",
+          "oklch(95% 0.174 156.3)"
+        ]
+      },
+      "neon-red": {
+        "role": "tertiary",
+        "displayName": "--neon-red",
+        "canonical": "hsl(0 75% 55%)",
+        "tonalRamp": [
+          "oklch(15% 0.208 26.2)",
+          "oklch(25% 0.208 26.2)",
+          "oklch(35% 0.208 26.2)",
+          "oklch(45% 0.208 26.2)",
+          "oklch(55% 0.208 26.2)",
+          "oklch(65% 0.208 26.2)",
+          "oklch(78% 0.208 26.2)",
+          "oklch(95% 0.208 26.2)"
+        ]
+      },
+      "neon-yellow": {
+        "role": "tertiary",
+        "displayName": "--neon-yellow",
+        "canonical": "hsl(42 90% 60%)",
+        "tonalRamp": [
+          "oklch(15% 0.151 84.2)",
+          "oklch(25% 0.151 84.2)",
+          "oklch(35% 0.151 84.2)",
+          "oklch(45% 0.151 84.2)",
+          "oklch(55% 0.151 84.2)",
+          "oklch(65% 0.151 84.2)",
+          "oklch(78% 0.151 84.2)",
+          "oklch(95% 0.151 84.2)"
+        ]
+      },
+      "neon-orange": {
+        "role": "tertiary",
+        "displayName": "--neon-orange",
+        "canonical": "hsl(25 90% 60%)",
+        "tonalRamp": [
+          "oklch(15% 0.157 52.7)",
+          "oklch(25% 0.157 52.7)",
+          "oklch(35% 0.157 52.7)",
+          "oklch(45% 0.157 52.7)",
+          "oklch(55% 0.157 52.7)",
+          "oklch(65% 0.157 52.7)",
+          "oklch(78% 0.157 52.7)",
+          "oklch(95% 0.157 52.7)"
+        ]
+      },
+      "relic": {
+        "role": "tertiary",
+        "displayName": "--relic",
+        "canonical": "hsl(0 66% 32%)",
+        "tonalRamp": [
+          "oklch(15% 0.143 26.2)",
+          "oklch(25% 0.143 26.2)",
+          "oklch(35% 0.143 26.2)",
+          "oklch(45% 0.143 26.2)",
+          "oklch(55% 0.143 26.2)",
+          "oklch(65% 0.143 26.2)",
+          "oklch(78% 0.143 26.2)",
+          "oklch(95% 0.143 26.2)"
+        ]
+      },
+      "relic-deep": {
+        "role": "tertiary",
+        "displayName": "--relic-deep",
+        "canonical": "hsl(0 70% 8%)",
+        "tonalRamp": [
+          "oklch(15% 0.050 23.8)",
+          "oklch(25% 0.050 23.8)",
+          "oklch(35% 0.050 23.8)",
+          "oklch(45% 0.050 23.8)",
+          "oklch(55% 0.050 23.8)",
+          "oklch(65% 0.050 23.8)",
+          "oklch(78% 0.050 23.8)",
+          "oklch(95% 0.050 23.8)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Cinzel Decorative",
+        "purpose": "Global headings and the RPG splash title."
+      },
+      "headline": {
+        "displayName": "Cinzel",
+        "purpose": "Module headings, navigation labels, and shared card titles."
+      },
+      "body": {
+        "displayName": "Cormorant Garamond",
+        "purpose": "Reading and descriptive copy."
+      },
+      "label": {
+        "displayName": "JetBrains Mono",
+        "purpose": "Logs, timestamps, and data-oriented details."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-occult",
+        "value": "0 20px 60px -15px hsl(265 80% 4% / 0.8)",
+        "purpose": "Deep separation beneath dark panels."
+      },
+      {
+        "name": "shadow-mystic",
+        "value": "0 10px 40px -10px hsl(268 85% 62% / 0.45), 0 0 0 1px hsl(268 50% 30% / 0.2)",
+        "purpose": "Violet ambient emphasis with a fine tinted edge."
+      },
+      {
+        "name": "shadow-glow",
+        "value": "0 0 28px hsl(268 85% 62% / 0.35)",
+        "purpose": "Soft violet halo for selected or emphasized elements."
+      }
+    ],
+    "motion": [
+      {
+        "name": "interactive-ease",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "200ms interactive color and focus transitions."
+      },
+      {
+        "name": "standard-ease",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Reusable 300ms smooth transition utility."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Mystic Primary Button",
+      "kind": "button",
+      "refersTo": "button-mystic",
+      "description": "Default high-emphasis action with the existing violet gradient and glow.",
+      "html": "<button class=\"ds-btn-mystic\">Realizar teste</button>",
+      "css": ".ds-btn-mystic{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:8px 16px;border:1px solid hsl(var(--primary)/.4);border-radius:8px;background:var(--gradient-mystic);color:hsl(var(--primary-foreground));font:600 14px 'Cormorant Garamond',Georgia,serif;letter-spacing:.025em;box-shadow:0 0 22px -4px hsl(var(--primary)/.55);transition:box-shadow 200ms cubic-bezier(.22,1,.36,1),transform 200ms cubic-bezier(.22,1,.36,1);cursor:pointer}.ds-btn-mystic:hover{box-shadow:0 0 32px -2px hsl(var(--primary)/.85);transform:translateY(-1px)}.ds-btn-mystic:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}"
+    },
+    {
+      "name": "Gold Confirmation Button",
+      "kind": "button",
+      "refersTo": "button-gold",
+      "description": "Gold-gradient action for important confirmation and completion.",
+      "html": "<button class=\"ds-btn-gold\">Confirmar</button>",
+      "css": ".ds-btn-gold{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:8px 16px;border:1px solid hsl(var(--accent)/.5);border-radius:8px;background:var(--gradient-gold);color:hsl(var(--accent-foreground));font:600 14px 'Cormorant Garamond',Georgia,serif;box-shadow:0 0 18px -4px hsl(var(--accent)/.55);transition:box-shadow 200ms ease,transform 200ms ease;cursor:pointer}.ds-btn-gold:hover{box-shadow:0 0 28px -2px hsl(var(--accent)/.8);transform:translateY(-1px)}.ds-btn-gold:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Dark field with a violet border and glow on focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Nome do personagem\" />",
+      "css": ".ds-input{width:100%;height:40px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;background:hsl(var(--background)/.6);color:hsl(var(--foreground));font:400 16px 'Cormorant Garamond',Georgia,serif;transition:border-color 160ms ease,box-shadow 160ms ease}.ds-input::placeholder{color:hsl(var(--muted-foreground)/.7)}.ds-input:focus-visible{outline:2px solid hsl(var(--primary)/.6);outline-offset:2px;border-color:hsl(var(--primary)/.6);box-shadow:0 0 18px -4px hsl(var(--primary)/.45)}.ds-input:disabled{opacity:.5;cursor:not-allowed}"
+    },
+    {
+      "name": "Enigmatic Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Shared dark panel with a deep shadow and a fine inset highlight.",
+      "html": "<article class=\"ds-card\"><h3>Ficha</h3><p>Resumo da personagem</p></article>",
+      "css": ".ds-card{padding:24px;border:1px solid hsl(var(--border));border-radius:10px;background:linear-gradient(145deg,hsl(265 25% 10%),hsl(270 28% 7%));color:hsl(var(--card-foreground));box-shadow:var(--shadow-occult),inset 0 1px 0 hsl(268 30% 22%/.3)}.ds-card h3{margin:0 0 8px;color:hsl(var(--foreground));font:700 20px 'Cinzel',serif;letter-spacing:.06em}.ds-card p{margin:0;color:hsl(var(--muted-foreground));font:500 16px 'Cormorant Garamond',Georgia,serif}"
+    },
+    {
+      "name": "Mystic Badge",
+      "kind": "chip",
+      "refersTo": "badge-mystic",
+      "description": "Compact pill for a selected or emphasized status.",
+      "html": "<span class=\"ds-badge-mystic\">Ativo</span>",
+      "css": ".ds-badge-mystic{display:inline-flex;align-items:center;min-height:22px;padding:2px 10px;border:1px solid hsl(var(--primary)/.4);border-radius:999px;background:hsl(var(--primary)/.15);color:hsl(var(--primary));font:600 13px 'Cormorant Garamond',Georgia,serif;transition:background-color 160ms ease,box-shadow 160ms ease}.ds-badge-mystic:hover{background:hsl(var(--primary)/.22);box-shadow:0 0 10px -2px hsl(var(--primary)/.4)}"
+    },
+    {
+      "name": "Active Module Tab",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "Selected tab in the fixed, horizontally scrollable module bar.",
+      "html": "<button class=\"ds-nav-active\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 3v18M3 12h18\"/></svg>Fichas</button>",
+      "css": ".ds-nav-active{position:relative;display:inline-flex;align-items:center;gap:6px;height:36px;padding:4px 12px;border:1px solid hsl(var(--primary)/.5);border-radius:8px;background:hsl(var(--primary)/.15);color:hsl(var(--primary));box-shadow:0 0 16px -5px hsl(var(--primary)/.8);font:600 13px 'Cinzel',serif;letter-spacing:.06em;white-space:nowrap}.ds-nav-active svg{width:14px;height:14px;fill:none;stroke:hsl(var(--accent));stroke-width:2;stroke-linecap:round}.ds-nav-active::after{position:absolute;right:8px;bottom:-1px;left:8px;height:1px;background:hsl(var(--accent));content:''}.ds-nav-active:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}"
+    },
+    {
+      "name": "Module Header",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Recurring heading with icon tile, title, metadata, and supporting copy.",
+      "html": "<header class=\"ds-module-header\"><span class=\"ds-module-icon\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 3 14 9l6 3-6 2-2 7-2-7-6-2 6-3z\"/></svg></span><div><h2>Invocações</h2><small>12 disponíveis</small><p>Companheiros da campanha</p></div></header>",
+      "css": ".ds-module-header{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid hsl(var(--border));border-radius:14px;background:linear-gradient(145deg,hsl(265 25% 10%),hsl(270 28% 7%));color:hsl(var(--foreground));box-shadow:var(--shadow-occult),inset 0 1px 0 hsl(268 30% 22%/.3)}.ds-module-icon{display:grid;width:40px;height:40px;flex:none;place-items:center;border:1px solid hsl(var(--primary)/.3);border-radius:8px;background:hsl(var(--primary)/.1);color:hsl(var(--primary));box-shadow:0 0 15px -3px hsl(var(--primary)/.4)}.ds-module-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.ds-module-header h2{margin:0;font:700 18px 'Cinzel',serif;letter-spacing:.08em}.ds-module-header small{margin-left:8px;color:hsl(var(--muted-foreground));font:500 13px 'JetBrains Mono',monospace}.ds-module-header p{margin:2px 0 0;color:hsl(var(--muted-foreground));font:italic 500 14px 'Cormorant Garamond',Georgia,serif}"
+    }
+  ],
+  "narrative": {
+    "northStar": "grimório digital para a mesa de campanha",
+    "overview": "The current visual language is sombria e mística: a dark campaign workspace framed by ceremonial type, restrained ornament, and the violet-and-gold colors already present in the source. It serves the Master and players in the same campaign, so the shared interface keeps modules, character tools, and session activity close at hand.\n\nThe experience is organized around play rather than a marketing page. A fixed module bar and event log surround the selected RPG workspace; module-specific content uses a shared family of controls and surfaces. The interface is information-dense, with clear type roles for headings, reading text, and numeric or system data.",
+    "keyCharacteristics": [
+      "Dark HSL surfaces with violet primary and gold accent tokens.",
+      "Cinzel-family headings, Cormorant Garamond reading text, and JetBrains Mono data labels.",
+      "Persistent module navigation, a collapsible session log, and specialized RPG workspaces.",
+      "Layered panels and shadows, with glow reserved for actions and active emphasis."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Palette Rule",
+        "body": "Use the existing token for each action, surface, and RPG resource role. Keep the CSS custom properties as the color source of truth.",
+        "section": "colors"
+      },
+      {
+        "name": "The Type-by-Role Rule",
+        "body": "Keep display, reading, and data typography in their established roles; the global font links load these families from Google Fonts.",
+        "section": "typography"
+      },
+      {
+        "name": "The Focused-Glow Rule",
+        "body": "Keep the underlying panels dark and layered; use the brighter glows to identify actions, selection, or emphasis.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the existing semantic tokens for global surfaces, actions, and RPG resource states.",
+      "Do preserve the display, reading, and monospace typography roles.",
+      "Do build module-specific interfaces from the shared buttons, fields, cards, badges, and module header.",
+      "Do keep keyboard focus visible and preserve active, hover, and disabled states."
+    ],
+    "donts": [
+      "Don't replace the dark global canvas with a light surface while documenting or extending this visual system.",
+      "Don't remove the contrast between deep panels and active violet or gold emphasis.",
+      "Don't spread the quest-board parchment asset across the app shell; its current use is a localized surface."
+    ]
+  }
+}

@@ -132,6 +132,7 @@ export function TestesModule({ compact = false }: TestesModuleProps) {
   return (
     <div className={compact ? 'space-y-4 p-4' : 'mx-auto max-w-4xl space-y-6 p-4 md:p-6'}>
       {!compact && <ModuleHeader title="Pedidos de Teste" subtitle="Solicite rolagens aos jogadores" icon={Dice6} />}
+      <p className="text-xs text-muted-foreground">Selecione as fichas e o teste; CD e nota são opcionais.</p>
 
       <div className={compact ? 'space-y-5' : 'space-y-5 rounded-lg border border-border/60 bg-card/60 p-5'}>
         <div className={compact ? 'grid grid-cols-2 gap-3' : 'grid md:grid-cols-2 gap-4'}>

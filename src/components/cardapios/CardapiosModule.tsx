@@ -134,48 +134,54 @@ export function CardapiosModule() {
                   }}
                 />
               ) : (
-                <div
-                  className="flex items-center gap-2 p-3 cursor-pointer hover:bg-secondary/30"
-                  onClick={() => {
-                    setExpandedEst(isOpen ? null : est.id);
-                    playToggleSound();
-                  }}
-                >
-                  {isOpen ? (
-                    <ChevronDown className="h-4 w-4 text-primary" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Store className="h-4 w-4 text-primary" />
-                  <div className="flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-bold text-foreground" style={{ fontFamily: "'Cinzel', serif" }}>
-                        {est.name}
-                      </span>
-                      {est.type && (
-                        <span className="text-xs italic text-muted-foreground">— {est.type}</span>
-                      )}
-                      {est.hiddenMode === 'soldout' && (
-                        <span className="rounded-full bg-neon-yellow/15 border border-neon-yellow/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-neon-yellow">
-                          Esgotado
-                        </span>
-                      )}
-                      {isMaster && est.hiddenMode === 'invisible' && (
-                        <span className="rounded-full bg-hp/15 border border-hp/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-hp">
-                          Oculto
-                        </span>
-                      )}
-                    </div>
-                    {est.location && (
-                      <div className="text-xs text-muted-foreground">{est.location}</div>
+                <div className="flex items-center gap-2 p-3 hover:bg-secondary/30">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => {
+                      setExpandedEst(isOpen ? null : est.id);
+                      playToggleSound();
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset"
+                  >
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 text-primary" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     )}
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {est.menus.length} seç{est.menus.length === 1 ? 'ão' : 'ões'}
-                  </span>
+                    <Store className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline gap-2">
+                        <span className="font-bold text-foreground" style={{ fontFamily: "'Cinzel', serif" }}>
+                          {est.name}
+                        </span>
+                        {est.type && (
+                          <span className="text-xs italic text-muted-foreground">— {est.type}</span>
+                        )}
+                        {est.hiddenMode === 'soldout' && (
+                          <span className="rounded-full bg-neon-yellow/15 border border-neon-yellow/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-neon-yellow">
+                            Esgotado
+                          </span>
+                        )}
+                        {isMaster && est.hiddenMode === 'invisible' && (
+                          <span className="rounded-full bg-hp/15 border border-hp/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-hp">
+                            Oculto
+                          </span>
+                        )}
+                      </span>
+                      {est.location && (
+                        <span className="block text-xs text-muted-foreground">{est.location}</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {est.menus.length} seç{est.menus.length === 1 ? 'ão' : 'ões'}
+                    </span>
+                  </button>
                   {canEdit && (
-                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex shrink-0 gap-1">
                       <button
+                        type="button"
+                        aria-label={'Editar ' + est.name}
                         onClick={() => setEditingEstId(est.id)}
                         className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"
                         title="Editar"
@@ -187,6 +193,8 @@ export function CardapiosModule() {
                         onChange={(v) => updateEstablishment(est.id, { hiddenMode: v })}
                       />
                       <button
+                        type="button"
+                        aria-label={'Descontos de ' + est.name}
                         onClick={() => {
                           playClickSound();
                           setDiscountDialog({
@@ -201,6 +209,8 @@ export function CardapiosModule() {
                         <Percent className="h-3.5 w-3.5" />
                       </button>
                       <button
+                        type="button"
+                        aria-label={'Excluir ' + est.name}
                         onClick={() => {
                           if (confirm(`Excluir "${est.name}"?`)) removeEstablishment(est.id);
                         }}
@@ -364,33 +374,39 @@ function MenuBlock({
           }}
         />
       ) : (
-        <div
-          className="flex items-center gap-2 p-2 cursor-pointer hover:bg-secondary/20"
-          onClick={onToggle}
-        >
-          {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 text-primary" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-          <Tag className="h-3.5 w-3.5 text-accent" />
-          <span className="flex-1 text-sm font-semibold text-foreground">{menu.name}</span>
-          {menu.hiddenMode === 'soldout' && (
-            <span className="rounded-full bg-neon-yellow/15 border border-neon-yellow/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-neon-yellow">
-              Esgotado
+        <div className="flex items-center gap-2 p-2 hover:bg-secondary/20">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={onToggle}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset"
+          >
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5 text-primary" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <Tag className="h-3.5 w-3.5 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{menu.name}</span>
+            {menu.hiddenMode === 'soldout' && (
+              <span className="shrink-0 rounded-full bg-neon-yellow/15 border border-neon-yellow/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-neon-yellow">
+                Esgotado
+              </span>
+            )}
+            {isMaster && menu.hiddenMode === 'invisible' && (
+              <span className="shrink-0 rounded-full bg-hp/15 border border-hp/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-hp">
+                Oculto
+              </span>
+            )}
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {visibleItems.length} {visibleItems.length === 1 ? 'item' : 'itens'}
             </span>
-          )}
-          {isMaster && menu.hiddenMode === 'invisible' && (
-            <span className="rounded-full bg-hp/15 border border-hp/30 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-hp">
-              Oculto
-            </span>
-          )}
-          <span className="text-xs text-muted-foreground">
-            {visibleItems.length} {visibleItems.length === 1 ? 'item' : 'itens'}
-          </span>
+          </button>
           {canEdit && (
-            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex shrink-0 gap-1">
               <button
+                type="button"
+                aria-label={'Editar seção ' + menu.name}
                 onClick={() => setEditingMenu(true)}
                 className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-primary"
                 title="Editar seção"
@@ -403,6 +419,8 @@ function MenuBlock({
                 size="sm"
               />
               <button
+                type="button"
+                aria-label={'Descontos de ' + menu.name}
                 onClick={() => {
                   playClickSound();
                   onOpenDiscount({
@@ -418,6 +436,8 @@ function MenuBlock({
                 <Percent className="h-3 w-3" />
               </button>
               <button
+                type="button"
+                aria-label={'Excluir seção ' + menu.name}
                 onClick={() => {
                   if (confirm(`Excluir seção "${menu.name}"?`)) onRemoveMenu();
                 }}

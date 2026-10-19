@@ -131,12 +131,19 @@ export function DiceTrayPanel({ handleRef, className, hideCinematicResultSummary
 
   return (
     <div className={cn('relative h-full w-full', shake && 'animate-[dice-shake_0.6s_ease-in-out]', className)}>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {lastTotal === null
+          ? ''
+          : 'Resultado: ' + lastResults.map((result) => result.type + ' ' + result.value).join(', ') +
+            (lastBonus === 0 ? '' : ', bônus ' + (lastBonus > 0 ? '+' : '') + lastBonus) +
+            ', total ' + lastTotal}
+      </div>
       {/* Véu místico atrás do canvas */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            'radial-gradient(ellipse at 50% 30%, hsl(268 70% 25% / 0.55) 0%, transparent 65%), radial-gradient(ellipse at 80% 90%, hsl(42 50% 20% / 0.25) 0%, transparent 60%)',
+            'radial-gradient(ellipse at 50% 30%, var(--dice-veil-violet) 0%, transparent 65%), radial-gradient(ellipse at 80% 90%, var(--dice-veil-gold) 0%, transparent 60%)',
           mixBlendMode: 'screen',
           zIndex: 2,
         }}
@@ -277,8 +284,8 @@ export function DiceTrayPanel({ handleRef, className, hideCinematicResultSummary
               key={r.id}
               className="px-2 py-0.5 rounded-md text-xs tabular-nums font-semibold flex items-center gap-1"
               style={{
-                background: 'linear-gradient(135deg, hsl(268 60% 22%) 0%, hsl(285 55% 18%) 100%)',
-                color: 'hsl(42 90% 75%)',
+                background: 'linear-gradient(135deg, var(--dice-result-chip-start) 0%, var(--dice-result-chip-end) 100%)',
+                color: 'var(--dice-result-chip-foreground)',
                 border: '1px solid hsl(42 78% 58% / 0.4)',
                 boxShadow: 'inset 0 0 8px hsl(268 85% 62% / 0.25)',
                 fontFamily: "'Cinzel', serif",
@@ -293,8 +300,8 @@ export function DiceTrayPanel({ handleRef, className, hideCinematicResultSummary
             <span
               className="px-2 py-0.5 rounded-md text-xs tabular-nums font-semibold"
               style={{
-                background: 'linear-gradient(135deg, hsl(42 60% 22%) 0%, hsl(38 55% 16%) 100%)',
-                color: 'hsl(42 90% 78%)',
+                background: 'linear-gradient(135deg, var(--dice-bonus-chip-start) 0%, var(--dice-bonus-chip-end) 100%)',
+                color: 'var(--dice-bonus-chip-foreground)',
                 border: '1px solid hsl(42 78% 58% / 0.5)',
                 fontFamily: "'Cinzel', serif",
               }}
@@ -306,7 +313,7 @@ export function DiceTrayPanel({ handleRef, className, hideCinematicResultSummary
           {!cinematicFocus && <span
             className="ml-auto text-sm font-bold tabular-nums tracking-wider"
             style={{
-              color: 'hsl(42 90% 70%)',
+              color: 'var(--dice-total-foreground)',
               fontFamily: "'Cinzel Decorative', serif",
               textShadow: '0 0 10px hsl(42 78% 58% / 0.6)',
             }}

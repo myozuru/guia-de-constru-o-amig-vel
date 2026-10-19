@@ -40,9 +40,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-foreground font-medium min-w-[140px] flex-shrink-0">{label}</span>
-      <span className="text-right">{value}</span>
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <span className="text-foreground font-medium sm:min-w-[140px] sm:flex-shrink-0">{label}</span>
+      <span className="break-words sm:flex-1 sm:text-right">{value}</span>
     </div>
   );
 }
@@ -333,16 +333,16 @@ export function GuiaModule() {
         subtitle={TOPICS.find(t => t.id === activeTopic)?.label}
         description="Referência rápida das regras: feitiços, combate, condições e recursos."
       />
-      <div className="flex gap-4">
+      <div className="flex flex-col gap-4 lg:flex-row">
       {/* Sidebar */}
-      <div className="w-44 flex-shrink-0 space-y-1">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-2 pb-1">Tópicos</h2>
+      <div className="flex w-full shrink-0 gap-1 overflow-x-auto pb-1 lg:w-44 lg:flex-col lg:overflow-visible lg:pb-0">
+        <h2 className="shrink-0 px-2 text-xs font-bold uppercase tracking-widest text-muted-foreground lg:pb-1">Tópicos</h2>
         {TOPICS.map(t => (
           <button
             key={t.id}
             onClick={() => setActiveTopic(t.id)}
             className={cn(
-              'w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-left transition-all duration-200',
+              'w-auto min-h-[44px] shrink-0 whitespace-nowrap flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-left transition-all duration-200 lg:w-full',
               activeTopic === t.id
                 ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm shadow-primary/10'
                 : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground border border-transparent'

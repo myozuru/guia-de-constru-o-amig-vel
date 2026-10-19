@@ -229,6 +229,8 @@ export function CombatBar({ className, variant = 'bar' }: Props) {
                 return (
                   <button
                     key={c.id}
+                    type="button"
+                    aria-pressed={active}
                     onClick={() => toggleParticipant(c.id)}
                     className={cn(
                       'rounded-md border px-1.5 py-0.5 text-xs font-medium transition-all truncate max-w-full',
@@ -339,6 +341,8 @@ export function CombatBar({ className, variant = 'bar' }: Props) {
                 return (
                   <button
                     key={c.id}
+                    type="button"
+                    aria-pressed={active}
                     onClick={() => toggleParticipant(c.id)}
                     className={cn(
                       'rounded-lg border px-2.5 py-1 text-xs font-medium transition-all',

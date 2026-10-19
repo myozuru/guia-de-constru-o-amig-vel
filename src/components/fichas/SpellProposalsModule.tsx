@@ -828,7 +828,7 @@ export function SpellProposalsModule() {
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      <header className="flex items-center justify-between gap-2">
+      <header className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-primary flex items-center gap-2" style={{ fontFamily: "'Cinzel', serif" }}>
           <MessageSquare className="h-6 w-6" />
           Debates de Propostas
@@ -841,7 +841,7 @@ export function SpellProposalsModule() {
             </span>
           )}
         </h1>
-        <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
+        <div className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-border bg-card p-1">
           {(['pending', 'all', 'closed'] as const).map((f) => (
             <button
               key={f}

@@ -26,7 +26,7 @@ export function PainelGuilda({ charId, master }: { charId?: string; master: bool
           <b>Fundar guilda</b>
           <Input aria-label="Nome da guilda" placeholder="Ex.: Bando do Falcão" value={nome} onChange={(e) => setNome(e.target.value)} />
           <div className="flex flex-wrap gap-1">{EMBLEMAS.map((e) => (
-            <button key={e} type="button" onClick={() => setEmblema(e)} className={`rounded border px-2 py-1 text-lg ${emblema === e ? 'border-primary bg-primary/10' : 'border-border'}`}>{e}</button>
+            <button key={e} type="button" aria-label={'Selecionar emblema ' + e} aria-pressed={emblema === e} onClick={() => setEmblema(e)} className={`rounded border px-2 py-1 text-lg ${emblema === e ? 'border-primary bg-primary/10' : 'border-border'}`}>{e}</button>
           ))}</div>
           <Button size="sm" disabled={!nome.trim()} onClick={() => { st.criarGuilda(nome, emblema, charId, []); setNome(''); }}>Fundar</Button>
         </div>

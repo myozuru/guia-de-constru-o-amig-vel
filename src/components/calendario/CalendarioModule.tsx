@@ -145,9 +145,17 @@ export function CalendarioModule() {
         <div className="grid grid-cols-7 gap-1">
           {days.map((day) => {
             const evts = dayEvents(day);
+            const eventSummary = evts.length === 0
+              ? 'sem eventos'
+              : evts.length === 1
+                ? '1 evento'
+                : evts.length + ' eventos';
+            const dayLabel = day + ' de ' + MONTHS[selectedMonth - 1] + ', ano ' + selectedYear + ', ' + eventSummary;
             return (
               <button
                 key={day}
+                aria-label={dayLabel}
+                aria-pressed={agendaDay === day}
                 onClick={() => handleDayClick(day)}
                 className={cn(
                   'relative rounded-lg p-1.5 text-sm text-foreground hover:bg-primary/10 transition-all duration-300 min-h-[44px] text-left',
@@ -158,7 +166,7 @@ export function CalendarioModule() {
                 {evts.length > 0 && (
                   <div className="flex gap-0.5 mt-0.5 flex-wrap">
                     {evts.slice(0, 3).map((e) => (
-                      <div key={e.id} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: e.color }} />
+                      <div key={e.id} aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: e.color }} />
                     ))}
                   </div>
                 )}

@@ -40,16 +40,17 @@ export function MapTopBar({
   const setDiceOpen = useDiceStore((s) => s.setOpen);
   return (
     <div
-      className="h-10 shrink-0 flex items-center px-2 gap-2 bg-card border-b border-border text-foreground"
+      className="h-12 min-w-0 shrink-0 flex items-center overflow-x-auto overscroll-x-contain touch-pan-x px-2 gap-2 bg-card border-b border-border text-foreground [scrollbar-width:thin]"
     >
-      <SceneTabs />
+      <div className="min-w-0 flex-1 overflow-hidden" style={{ minWidth: 'min(12rem, 35vw)' }}><SceneTabs /></div>
 
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         <BackgroundButton />
         <SceneIOButtons />
         <RadioIconButton
           variant="ghost"
           title="Desfazer (Ctrl+Z)"
+          label="Desfazer"
           active={false}
           onClick={() => canUndo && undo()}
         >
@@ -58,6 +59,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title="Refazer (Ctrl+Shift+Z)"
+          label="Refazer"
           active={false}
           onClick={() => canRedo && redo()}
         >
@@ -66,6 +68,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title="Iniciativa (I)"
+          label="Iniciativa"
           active={initiativeOpen}
           onClick={() => setInitiativeOpen(!initiativeOpen)}
         >
@@ -73,7 +76,8 @@ export function MapTopBar({
         </RadioIconButton>
         <RadioIconButton
           variant="ghost"
-          title={lightingEnabled ? 'Iluminação dinâmica: ON' : 'Iluminação dinâmica: OFF'}
+          title={lightingEnabled ? 'Iluminação dinâmica: ligada' : 'Iluminação dinâmica: desligada'}
+          label="Iluminação"
           active={lightingEnabled}
           onClick={() => setLighting({ enabled: !lightingEnabled })}
         >
@@ -82,6 +86,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title="Dados (D)"
+          label="Dados"
           active={diceOpen}
           onClick={() => setDiceOpen(!diceOpen)}
         >
@@ -90,6 +95,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title="Camadas (L)"
+          label="Camadas"
           active={layerPanelOpen}
           onClick={onToggleLayerPanel}
         >
@@ -98,6 +104,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title="Configurações de grade"
+          label="Grade"
           active={settingsOpen}
           onClick={onToggleSettings}
         >
@@ -106,6 +113,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title="Ajuda / atalhos (?)"
+          label="Ajuda"
           active={false}
           onClick={() => onOpenHelp?.()}
         >
@@ -114,6 +122,7 @@ export function MapTopBar({
         <RadioIconButton
           variant="ghost"
           title={immersive ? 'Sair do modo imersivo' : 'Modo imersivo'}
+          label={immersive ? 'Sair' : 'Imersivo'}
           active={immersive}
           onClick={onToggleImmersive}
         >

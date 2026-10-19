@@ -224,7 +224,7 @@ export function FichasModule() {
             Você já possui sua ficha principal. Ainda pode criar fichas temporárias à vontade.
           </div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           {isPlayer ? (
             <>
               <Button
@@ -245,7 +245,7 @@ export function FichasModule() {
             </>
           ) : (
             <>
-              <div className="flex-1 flex flex-col gap-0.5">
+              <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                 <Input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
@@ -260,16 +260,16 @@ export function FichasModule() {
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value as CharacterCategory)}
-                className="h-10 rounded-md border border-border bg-background/60 px-3 text-sm text-foreground hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                className="h-10 max-w-full rounded-md border border-border bg-background/60 px-3 text-sm text-foreground hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c.id} value={c.id}>{c.label}</option>
                 ))}
               </select>
-              <Button size="icon" onClick={handleCreate} disabled={!newName.trim() || nameDuplicate} title="Criar ficha">
-                <Plus className="h-5 w-5" />
+              <Button variant="mystic" onClick={handleCreate} disabled={!newName.trim() || nameDuplicate} title="Criar ficha">
+                <Plus className="h-4 w-4" /> Criar ficha
               </Button>
-              <Button variant="mystic" onClick={() => setShowWizard(true)} title="Criar ficha passo a passo">
+              <Button variant="outline" onClick={() => setShowWizard(true)} title="Criar ficha passo a passo">
                 <Wand2 className="h-4 w-4" /> Assistente
               </Button>
               <Button

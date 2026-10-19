@@ -104,6 +104,7 @@ export function SceneIOButtons() {
       <RadioIconButton
         variant="ghost"
         title="Exportar cena ativa"
+        label="Exportar cena"
         active={false}
         onClick={exportActive}
       >
@@ -112,6 +113,7 @@ export function SceneIOButtons() {
       <RadioIconButton
         variant="ghost"
         title="Exportar todas as cenas"
+        label="Exportar todas"
         active={false}
         onClick={exportAll}
       >
@@ -120,6 +122,7 @@ export function SceneIOButtons() {
       <RadioIconButton
         variant="ghost"
         title="Backup completo do sistema"
+        label="Backup"
         active={false}
         onClick={exportFullBackup}
       >
@@ -128,6 +131,7 @@ export function SceneIOButtons() {
       <RadioIconButton
         variant="ghost"
         title="Importar cenas ou restaurar backup (.json)"
+        label="Importar"
         active={false}
         onClick={() => inputRef.current?.click()}
       >

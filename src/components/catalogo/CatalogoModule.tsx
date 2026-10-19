@@ -119,48 +119,58 @@ export function CatalogoModule() {
         subtitle="Tudo que foi aprovado em Debates ou criado no Omni-Engine, pronto para entregar a qualquer personagem."
       />
 
-      <div className="inline-flex rounded-md border border-border/60 bg-background/60 p-0.5 text-xs">
-        {SECOES.map((s) => {
-          const Icon = s.icon;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSecao(s.id)}
-              className={`px-3 py-1.5 rounded inline-flex items-center gap-1.5 transition-colors ${
-                secao === s.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {s.label}
-              <span className={`ml-1 rounded px-1 text-xs ${secao === s.id ? 'bg-primary-foreground/20' : 'bg-secondary/60'}`}>
-                {s.count}
-              </span>
-            </button>
-          );
-        })}
+      <div className="space-y-1.5" role="group" aria-label="Seção do catálogo">
+        <p className="text-xs font-mono font-semibold tracking-wide text-muted-foreground">Seção do catálogo</p>
+        <div className="inline-flex max-w-full flex-wrap rounded-md border border-primary/25 bg-card/60 p-1 text-xs">
+          {SECOES.map((s) => {
+            const Icon = s.icon;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={secao === s.id}
+                onClick={() => setSecao(s.id)}
+                className={`px-3 py-1.5 rounded inline-flex items-center gap-1.5 transition-colors ${
+                  secao === s.id
+                    ? 'bg-primary text-primary-foreground shadow-[0_0_12px_-5px_hsl(var(--primary)/0.65)]'
+                    : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {s.label}
+                <span className={`ml-1 rounded px-1 text-xs ${secao === s.id ? 'bg-primary-foreground/20' : 'bg-secondary/60'}`}>
+                  {s.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {secao === 'omni' && (
       <>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-md border border-border/60 bg-background/60 p-0.5 text-xs">
-          {CATEGORIAS.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setFiltro(c.id)}
-              className={`px-3 py-1 rounded transition-colors ${
-                filtro === c.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
+        <div className="space-y-1.5" role="group" aria-label="Filtrar por categoria">
+          <p className="text-xs font-mono font-semibold tracking-wide text-muted-foreground">Filtrar por categoria</p>
+          <div className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-border/60 bg-background/40 p-1 text-xs">
+            {CATEGORIAS.map((c) => {
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-pressed={filtro === c.id}
+                  onClick={() => setFiltro(c.id)}
+                  className={`rounded border px-2.5 py-1 transition-colors ${
+                    filtro === c.id
+                      ? 'border-primary/40 bg-primary/15 text-primary'
+                      : 'border-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <Input
           value={busca}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Archive, Plus, Trash2, ChevronDown, X, PackagePlus, PackageOpen, Send, Pencil, Check, Lock, Unlock, Key } from 'lucide-react';
 import { LockSprite, KeySprite, LockSpritePicker, KeySpritePicker } from './LockSprite';
 import { ModuleHeader } from '@/components/ui/module-header';
@@ -140,6 +140,7 @@ function ChestCard({
   const characters = useCharacterStore((s) => s.characters);
   const addLog = useLogStore((s) => s.addLog);
   const { toast } = useToast();
+  const detailsId = useId();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(chest?.name ?? '');
   const [addSearch, setAddSearch] = useState('');
@@ -214,53 +215,61 @@ function ChestCard({
   return (
     <div className="rounded-lg border border-border overflow-hidden card-enigmatic">
       <div className="flex items-center gap-2 px-4 py-3">
-        <button
-          onClick={onToggle}
-          className="flex flex-1 min-w-0 items-center gap-3 text-left"
-        >
-          <Archive className="h-4 w-4 text-primary shrink-0" />
-          <div className="flex-1 min-w-0">
-            {editingName ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <Input
-                  autoFocus
-                  value={nameDraft}
-                  onChange={(e) => setNameDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitName();
-                    if (e.key === 'Escape') {
-                      setNameDraft(chest.name);
-                      setEditingName(false);
-                    }
-                  }}
-                  className="h-7 text-sm"
-                />
-                <button
-                  onClick={commitName}
-                  className="rounded p-1 text-primary hover:bg-primary/10"
-                  title="Salvar"
-                >
-                  <Check className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="font-semibold text-foreground truncate text-sm">{chest.name}</div>
-            )}
-            <div className="text-xs text-muted-foreground">
-              {chest.entries.length} tipo(s) • {totalCount} item(ns)
-            </div>
+        {editingName ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Archive className="h-4 w-4 shrink-0 text-primary" />
+            <Input
+              aria-label="Nome do baú"
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitName();
+                if (e.key === 'Escape') {
+                  setNameDraft(chest.name);
+                  setEditingName(false);
+                }
+              }}
+              className="h-7 flex-1 text-sm"
+            />
+            <button
+              type="button"
+              aria-label="Salvar nome do baú"
+              onClick={commitName}
+              className="rounded p-1 text-primary hover:bg-primary/10"
+              title="Salvar"
+            >
+              <Check className="h-4 w-4" />
+            </button>
           </div>
-          <ChevronDown
-            className={cn(
-              'h-4 w-4 text-muted-foreground transition-transform duration-300',
-              expanded && 'rotate-180',
-            )}
-          />
-        </button>
+        ) : (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            onClick={onToggle}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          >
+            <Archive className="h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-foreground">{chest.name}</span>
+              <span className="block text-xs text-muted-foreground">
+                {chest.entries.length} tipo(s) • {totalCount} item(ns)
+              </span>
+            </span>
+            <ChevronDown
+              className={cn(
+                'h-4 w-4 text-muted-foreground transition-transform duration-300',
+                expanded && 'rotate-180',
+              )}
+            />
+          </button>
+        )}
         {!editingName && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
+            type="button"
+            aria-label={'Renomear baú ' + chest.name}
+            onClick={() => {
               setNameDraft(chest.name);
               setEditingName(true);
             }}
@@ -271,8 +280,9 @@ function ChestCard({
           </button>
         )}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
+          type="button"
+          aria-label={'Excluir baú ' + chest.name}
+          onClick={() => {
             if (confirm(`Excluir baú "${chest.name}"?`)) onRemove();
           }}
           className="rounded p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/15"
@@ -283,6 +293,9 @@ function ChestCard({
       </div>
 
       <div
+        id={detailsId}
+        aria-hidden={!expanded}
+        inert={!expanded}
         className="grid transition-[grid-template-rows,opacity] duration-300 ease-in-out"
         style={{ gridTemplateRows: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}
       >

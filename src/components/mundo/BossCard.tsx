@@ -26,12 +26,17 @@ export function BossCard({ boss, isMaster, onOpen, onToggleVisible, onDuplicate,
       exit={{ opacity: 0, scale: 0.96 }}
       whileHover={{ y: -4 }}
       transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-      onClick={onOpen}
       className="group relative cursor-pointer overflow-hidden rounded-xl border border-border/70 bg-card/80 p-4 shadow-lg backdrop-blur transition-colors hover:border-accent/60"
     >
       <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 gradient-mystic mix-blend-soft-light" aria-hidden />
+      <button
+        type="button"
+        aria-label={'Abrir ficha de ' + boss.nome}
+        onClick={onOpen}
+        className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+      />
 
-      <div className="relative flex items-center gap-3">
+      <div className="pointer-events-none relative z-10 flex items-center gap-3">
         <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-accent/50 shadow-[0_0_18px_-6px_hsl(var(--primary)/0.9)] transition-transform duration-300 group-hover:scale-105">
           {boss.retrato && canSeeField(boss, 'retrato', isMaster) ? (
             <BossPortrait boss={boss} alt={boss.nome} />
@@ -60,7 +65,7 @@ export function BossCard({ boss, isMaster, onOpen, onToggleVisible, onDuplicate,
         </div>
       </div>
 
-      <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-secondary/70">
+      <div className="pointer-events-none relative z-10 mt-3 h-1.5 overflow-hidden rounded-full bg-secondary/70">
         <motion.div
           className="h-full rounded-full bg-hp"
           initial={false}
@@ -70,7 +75,7 @@ export function BossCard({ boss, isMaster, onOpen, onToggleVisible, onDuplicate,
       </div>
 
       {isMaster && (
-        <div className="relative mt-3 flex items-center justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="relative z-20 mt-3 flex items-center justify-end gap-1 opacity-100 transition-opacity duration-200">
           <IconBtn title={boss.visivel ? 'Visível aos jogadores' : 'Oculto'} onClick={onToggleVisible} active={boss.visivel}>
             {boss.visivel ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
           </IconBtn>
@@ -94,6 +99,8 @@ function IconBtn({
   return (
     <button
       type="button"
+      aria-label={title}
+      aria-pressed={active}
       title={title}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       className={cn(

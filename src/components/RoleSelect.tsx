@@ -386,10 +386,11 @@ export function RoleSelect() {
               <p className="text-xs text-muted-foreground mt-2">Foto (opcional)</p>
             </div>
 
-            <label className="block text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Cinzel', serif" }}>
+            <label htmlFor="new-profile-name" className="block text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Cinzel', serif" }}>
               Nome
             </label>
             <input
+              id="new-profile-name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               maxLength={32}
@@ -406,12 +407,13 @@ export function RoleSelect() {
               <div className="mb-2" />
             )}
 
-            <label className="block text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Cinzel', serif" }}>
+            <label htmlFor="new-profile-password" className="block text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Cinzel', serif" }}>
               Senha do perfil (opcional)
             </label>
             <div className="relative mb-3">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
+                id="new-profile-password"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -525,12 +527,13 @@ export function RoleSelect() {
 
             {mode.canChangePassword && (
               <>
-                <label className="block text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Cinzel', serif" }}>
+                <label htmlFor="edit-profile-password" className="block text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Cinzel', serif" }}>
                   Senha do perfil
                 </label>
                 <div className="relative mb-3">
                   <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
+                    id="edit-profile-password"
                     type="password"
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}

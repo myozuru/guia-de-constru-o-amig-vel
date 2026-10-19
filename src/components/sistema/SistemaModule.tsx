@@ -174,7 +174,7 @@ export function SistemaModule() {
       />
 
       {/* Dashboard */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {stats.map((s) => (
           <div key={s.label} className="rounded-lg border border-border bg-card p-4 flex items-center gap-3 card-enigmatic">
             <s.icon className={`h-8 w-8 ${s.color}`} />
@@ -189,7 +189,7 @@ export function SistemaModule() {
       {/* Time/Date config */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3 card-enigmatic">
         <h3 className="text-base font-bold text-foreground">Configuração de Data/Hora</h3>
-        <div className="grid grid-cols-3 gap-3 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
           <div className="space-y-1">
             <label className="text-muted-foreground text-sm">Dia</label>
             <NullSafeInput value={chronos.day} onChange={(v) => chronos.setDate(v, chronos.month, chronos.year)} className="w-full" />
@@ -228,7 +228,7 @@ export function SistemaModule() {
       {/* Portability */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3 card-enigmatic">
         <h3 className="text-base font-bold text-foreground">Portabilidade</h3>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button onClick={handleExport} className="flex items-center gap-2 h-10 rounded-md bg-primary px-4 text-primary-foreground hover:bg-primary/90 text-sm transition-all duration-300">
             <Download className="h-4 w-4" /> Exportar JSON
           </button>
@@ -271,21 +271,21 @@ export function SistemaModule() {
         {resetStep === 3 && (
           <div className="space-y-2 text-sm">
             <p className="text-destructive">Digite <strong>APAGAR</strong> para confirmar a destruição total:</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
                 placeholder="APAGAR"
-                className="h-9 rounded border border-destructive bg-background px-3 text-foreground font-mono tracking-widest text-sm"
+                className="h-9 min-w-[8rem] max-w-full flex-1 rounded border border-destructive bg-background px-3 text-foreground font-mono tracking-widest text-sm"
               />
               <button
                 onClick={handleReset}
                 disabled={confirmText !== 'APAGAR'}
-                className="h-9 rounded bg-destructive px-4 text-destructive-foreground disabled:opacity-50 text-sm"
+                className="h-9 shrink-0 whitespace-nowrap rounded bg-destructive px-4 text-destructive-foreground disabled:opacity-50 text-sm"
               >
                 Executar Reset
               </button>
-              <button onClick={() => { setResetStep(0); setConfirmText(''); }} className="h-9 rounded bg-secondary px-4 text-secondary-foreground text-sm">Cancelar</button>
+              <button onClick={() => { setResetStep(0); setConfirmText(''); }} className="h-9 shrink-0 whitespace-nowrap rounded bg-secondary px-4 text-secondary-foreground text-sm">Cancelar</button>
             </div>
           </div>
         )}

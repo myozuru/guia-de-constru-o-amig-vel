@@ -69,14 +69,16 @@ export function BackgroundButton() {
       <button
         type="button"
         title={background ? 'Editar fundo da cena' : 'Adicionar fundo à cena'}
+        aria-label={background ? 'Editar fundo da cena' : 'Adicionar fundo à cena'}
         onClick={() => {
           if (background) setOpen((v) => !v);
           else fileRef.current?.click();
         }}
-        className="h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary"
-        style={background ? { color: '#a3e3ff' } : undefined}
+        className="h-11 min-w-11 rounded-md px-2 flex items-center justify-center gap-1.5 text-[11px] font-medium whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-secondary"
+        style={background ? { color: 'var(--map-background-tint)' } : undefined}
       >
         <ImageIcon className="h-4 w-4" />
+        <span>Fundo</span>
       </button>
 
       {open && background && (

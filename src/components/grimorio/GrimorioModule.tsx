@@ -114,9 +114,10 @@ export function GrimorioModule() {
                     {c.core?.nd ? ` · ND ${c.core.nd}` : null}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity">
                   <button
                     type="button"
+                    aria-label={isLinked(c) ? 'Atualizar Ficha vinculada de ' + (c.name || 'criatura') : 'Enviar ' + (c.name || 'criatura') + ' para Fichas'}
                     title={isLinked(c) ? 'Atualizar Ficha vinculada' : 'Enviar para Fichas'}
                     onClick={() => sendToFichas(c)}
                     className="rounded p-1 text-muted-foreground hover:bg-primary/15 hover:text-primary"
@@ -125,6 +126,7 @@ export function GrimorioModule() {
                   </button>
                   <button
                     type="button"
+                    aria-label={'Editar ' + (c.name || 'criatura')}
                     title="Editar"
                     onClick={() => setView({ name: 'builder', creatureId: c.id })}
                     className="rounded p-1 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
@@ -133,6 +135,7 @@ export function GrimorioModule() {
                   </button>
                   <button
                     type="button"
+                    aria-label={'Duplicar ' + (c.name || 'criatura')}
                     title="Duplicar"
                     onClick={() => storage.duplicate(c.id)}
                     className="rounded p-1 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
@@ -141,6 +144,7 @@ export function GrimorioModule() {
                   </button>
                   <button
                     type="button"
+                    aria-label={'Apagar ' + (c.name || 'criatura')}
                     title="Apagar"
                     onClick={() => {
                       if (confirm(`Apagar "${c.identity?.name || c.name || 'criatura'}"?`)) {
