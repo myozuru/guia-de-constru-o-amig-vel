@@ -66,7 +66,7 @@ async def main():
           const pid=window.__profileStore.getState().activeProfileId;
           const src=cs.getState().characters.find(c=>!c.temporary)||cs.getState().characters[0];
           const mk=(id,o)=>({...src,temporary:false,id,...o});
-          const base={escCurrent:0,escMax:0,conditions:[],activeConditions:[],exhaustion:0,exhaustionLevel:0,isDead:false,dead:false,rd:0,chosenSpecAbilities:[],attacksThisTurn:0,reactionsCurrent:1,reactionsMax:1,bonusActionsCurrent:1,bonusActionsMax:1,actionsCurrent:1,actionsMax:1,specAbilityUsage:{},omniUsosCena:{}};
+          const base={escCurrent:0,escMax:0,conditions:[],activeConditions:[],exhaustion:0,exhaustionLevel:0,isDead:false,dead:false,rd:0,chosenSpecAbilities:[],attacksThisTurn:0,reactionsCurrent:1,reactionsMax:1,bonusActionsCurrent:1,bonusActionsMax:1,actionsCurrent:1,actionsMax:1,specAbilityUsage:{},omniUsosCena:{},passives:[],skills:src?.skills||[],inventory:[],omniAtivos:[]};
           const t=mk('teste-esp',{...base,name:'TESTE Especialista',profileId:pid,category:'PLAYER',level:5,peCurrent:60,peMax:60,hpCurrent:40,hpMax:40,movement:9,
             mainHandWeaponName:e.nome,offHandWeaponName:null,meleeTrained:true,rangedTrained:true,
             attributes:[{id:'a1',name:'Força',value:16},{id:'a2',name:'Destreza',value:16},{id:'a3',name:'Sabedoria',value:18}]});
