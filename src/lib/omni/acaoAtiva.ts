@@ -567,6 +567,9 @@ async function executarAcaoAtivaInterna(
     let aplicaEfeitos = true;
     let passouTR = false;
     let grauTR: GrauSucessoTR | undefined;
+    // Falha crítica sem ramo próprio herda o ramo de falha (ex.: condição do Trono das Nuvens).
+    let grauRamo: GrauSucessoTR | undefined;
+    const ramoDoGrau = (g: GrauSucessoTR): GrauSucessoTR => g === 'falha_critica' && !cfg.desfechosTR?.falha_critica && cfg.desfechosTR?.falha ? 'falha' : g;
     let desfechoTR: DesfechoTRAtivo | undefined;
     let efeitosTR: EfeitoSecundarioAtivo[] = cfg.efeitos ?? [];
     let armaDano = 0;
@@ -594,8 +597,9 @@ async function executarAcaoAtivaInterna(
     if (cfg.teste === 'tr') {
       const resTR = await rolarTRAlvo();
       grauTR = resTR.grau;
+      grauRamo = ramoDoGrau(grauTR);
       passouTR = grauTR === 'sucesso';
-      const ramo = cfg.desfechosTR?.[grauTR];
+      const ramo = cfg.desfechosTR?.[grauRamo];
       desfechoTR = ramo;
       efeitosTR = ramo?.efeitos ?? (grauTR === 'sucesso' ? [] : cfg.efeitos ?? []);
       if (grauTR === 'sucesso' && ramo?.dano === undefined && ramo?.dano_extra === undefined && !ramo?.dano_maximizado && !ramo?.efeitos?.length) efeitosTR = [];
@@ -639,7 +643,8 @@ async function executarAcaoAtivaInterna(
       if (cfg.tr_apos_acerto) {
         const resTR = await rolarTRAlvo();
         grauTR = resTR.grau;
-        const ramo = cfg.desfechosTR?.[grauTR];
+        grauRamo = ramoDoGrau(grauTR);
+        const ramo = cfg.desfechosTR?.[grauRamo];
         desfechoTR = ramo ? { ...ramo, dano: undefined } : undefined;
         efeitosTR = ramo?.efeitos ?? (grauTR === 'sucesso' ? [] : cfg.efeitos ?? []);
         cabecalho += ` · ${resTR.texto}`;
@@ -761,7 +766,7 @@ async function executarAcaoAtivaInterna(
     const fatorRaw = desfechoTR?.multiplicador_duracao ?? 1;
     const fatorDuracao = Number.isFinite(fatorRaw) && fatorRaw > 0 ? fatorRaw : 1;
     const efeitosAplicados = efeitosTR.map(ef => 'rodadas' in ef && fatorDuracao > 1 && ef.rodadas > 0 ? { ...ef, rodadas: Math.ceil(ef.rodadas * fatorDuracao) } : ef);
-    const inicioPlanos = grauTR && indicesDesfecho[grauTR] !== undefined ? indicesDesfecho[grauTR]! : 0;
+    const inicioPlanos = grauRamo && indicesDesfecho[grauRamo] !== undefined ? indicesDesfecho[grauRamo]! : 0;
     const todosPlanos = movimentos.planos.get(t.id) ?? [];
     const planosResultado = efeitosAplicados.map((_, i) => { const plano = todosPlanos.find(p => p.indice === inicioPlanos + i); return plano ? { ...plano, indice: i } : undefined; }).filter((p): p is PlanoMovimentoAtivo => !!p);
     if (aplicaEfeitos && assistenciaDoAlvo()) pendentesContinuos.push({ alvoId: t.id, multiplicador: multiplicadorContinuo, rodadas: cfg.assistencia_dano?.rodadas, assistencia: assistenciaDoAlvo() });
