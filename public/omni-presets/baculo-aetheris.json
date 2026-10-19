@@ -72,7 +72,23 @@
           "tr": "fortitude",
           "metadeNoSucesso": true,
           "dano": "5d8",
-          "tipoDano": "Impacto"
+          "tipoDano": "Impacto",
+          "desfechosTR": {
+            "falha": {
+              "dano": "total",
+              "efeitos": [
+                {
+                  "tipo": "condicao",
+                  "condicao": "suspenso",
+                  "rodadas": 0,
+                  "ate_inicio_turno_usuario": true
+                }
+              ]
+            },
+            "sucesso": {
+              "dano": "metade"
+            }
+          }
         },
         {
           "id": "aa-aetheris-requiem",
@@ -91,7 +107,19 @@
           "tr": "fortitude",
           "metadeNoSucesso": true,
           "dano": "15d10",
-          "tipoDano": "Sônico"
+          "tipoDano": "Sônico",
+          "condicionais": [
+            {
+              "id": "requiem-suspensos",
+              "se_alvo": [
+                {
+                  "tipo": "tem_condicao",
+                  "nome": "suspenso"
+                }
+              ],
+              "mod_tr_alvo": -2
+            }
+          ]
         },
         {
           "id": "aa-aetheris-ruptura",

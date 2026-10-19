@@ -22,14 +22,29 @@ describe('preset Báculo Aetheris', () => {
   it('Trono: 9 PE, raio 3 m, metade no sucesso', () => {
     const a = acao('aa-aetheris-trono');
     expect([a.custoPE, a.area?.tamanho_m, a.metadeNoSucesso]).toEqual(['9', 3, true]);
+    expect((a as { desfechosTR?: { falha: { efeitos: unknown[] } } }).desfechosTR?.falha.efeitos[0]).toMatchObject({ condicao: 'suspenso', ate_inicio_turno_usuario: true });
   });
   it('Réquiem: 18 PE, raio 9 m a 24 m, 15d10', () => {
     const a = acao('aa-aetheris-requiem');
     expect([a.custoPE, a.alcanceM, a.area?.tamanho_m, a.dano]).toEqual(['18', 24, 9, '15d10']);
+    expect((a as { condicionais?: { mod_tr_alvo: number; se_alvo: { nome: string }[] }[] }).condicionais?.[0]).toMatchObject({ mod_tr_alvo: -2, se_alvo: [{ nome: 'suspenso' }] });
     expect([a.acao, (a as { usos_por_cena?: number }).usos_por_cena]).toEqual(['completa', 1]);
   });
   it('Ruptura: reação de 2 PE, 10d10 Sônico', () => {
     const a = acao('aa-aetheris-ruptura');
     expect([a.acao, a.custoPE, a.dano]).toEqual(['reacao', '2', '10d10']);
+  });
+});
+
+describe('condição Suspenso', () => {
+  it('termina no início do próximo turno de quem aplicou', async () => {
+    const { useCharacterStore } = await import('@/stores/useCharacterStore');
+    const { expirarCondicoesNoInicioDoTurno } = await import('@/stores/useCombatStore');
+    const cond = { id: 's1', conditionId: 'suspenso', name: 'Suspenso', icon: '🌪️', remainingTurns: -1, remainingRounds: -1, expiraNoInicioDoTurnoDe: 'mago' };
+    useCharacterStore.setState({ characters: [{ id: 'alvo', name: 'Alvo', activeConditions: [cond] }] as never });
+    expirarCondicoesNoInicioDoTurno('outro');
+    expect(useCharacterStore.getState().characters[0].activeConditions).toHaveLength(1);
+    expirarCondicoesNoInicioDoTurno('mago');
+    expect(useCharacterStore.getState().characters[0].activeConditions).toHaveLength(0);
   });
 });

@@ -330,15 +330,16 @@ function aplicarEfeitos(u: Character, alvo: Character, efeitos: EfeitoSecundario
       if (!def) continue;
       const ac: ActiveCondition = {
         id: crypto.randomUUID(), conditionId: def.id, name: def.name, icon: def.icon,
-        remainingTurns: -1, remainingRounds: sustentadas ? -1 : ef.rodadas > 0 ? ef.rodadas : -1, sourceCharName: fonte, sourceCharId: u.id,
+        remainingTurns: -1, remainingRounds: sustentadas || ef.ate_inicio_turno_usuario ? -1 : ef.rodadas > 0 ? ef.rodadas : -1, sourceCharName: fonte, sourceCharId: u.id,
         sourceEntityId, sourceInstanceId,
+        ...(ef.ate_inicio_turno_usuario && !sustentadas ? { expiraNoInicioDoTurnoDe: u.id } : {}),
       };
       const canonicalId = store.addCondition(alvo.id, ac);
       const activeCondition = useCharacterStore.getState().characters.find(c => c.id === alvo.id)?.activeConditions.find(c => c.id === canonicalId);
       const aplicacaoAtiva = activeCondition?.sourceApplications?.some(source => source.applicationId === ac.id) ?? canonicalId === ac.id;
       if (sustentadas && canonicalId && aplicacaoAtiva) sustentadas.push({ charId: alvo.id, id: canonicalId, sourceEntityId, sourceInstanceId });
       if (!useCharacterStore.getState().characters.find(c => c.id === alvo.id)?.activeConditions.some(c => c.id === ac.id)) continue;
-      notas.push(`${def.icon} ${def.name}${sustentadas ? ' (sustentada)' : ef.rodadas > 0 ? ` (${ef.rodadas} rod.)` : ''}`);
+      notas.push(`${def.icon} ${def.name}${sustentadas ? ' (sustentada)' : ef.ate_inicio_turno_usuario ? ' (até o próximo turno de quem usou)' : ef.rodadas > 0 ? ` (${ef.rodadas} rod.)` : ''}`);
     } else if (ef.tipo === 'remover_condicao') {
       const def = resolverCondicaoOmni(ef.condicao);
       const atuais = useCharacterStore.getState().characters.find(c => c.id === alvo.id)?.activeConditions ?? [];
