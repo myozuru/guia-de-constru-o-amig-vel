@@ -68,8 +68,6 @@ export type ConditionDurationMode = 'ate_acabar' | 'tr_todo_round' | 'ate_passar
 export interface ConditionSourceApplication {
   applicationId: string;
   sourceCharId?: string;
-  /** Termina no início do próximo turno deste personagem (ex.: quem aplicou). */
-  expiraNoInicioDoTurnoDe?: string;
   sourceCharName?: string;
   sourceEntityId?: string;
   sourceInstanceId?: string;
@@ -89,6 +87,8 @@ export interface ActiveCondition {
   sourceCharName?: string;
   /** Origem identificada para gatilhos; não é inferida pelo nome. */
   sourceCharId?: string;
+  /** Termina no início do próximo turno deste personagem (ex.: quem aplicou). */
+  expiraNoInicioDoTurnoDe?: string;
   /** ID da entidade que aplicou a condição (arma, item, talento ou feitiço). */
   sourceEntityId?: string;
   /** ID da cópia específica da fonte no inventário, quando houver. */
