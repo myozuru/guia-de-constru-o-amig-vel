@@ -172,7 +172,7 @@ describe('custos genéricos de ações', () => {
     expect(segunda.ok).toBe(true);
     expect(pegarFicha('u')).toMatchObject({ actionsCurrent: 1, bonusActionsCurrent: 0, omniActionCost: { ler_tecnica: { usedThisRound: 1 } } });
   });
-  it('custo action_full exige e consome duas ações comuns', async () => {
+  it('custo action_full exige e consome Ação Comum + Ação Bônus', async () => {
     mesa({ actionsCurrent: 1, omniActionCost: { golpe_completo: { cost: 'action_full' } } });
     useCombatStore.setState({ inCombat: true });
     const acao = cfg({ id: 'golpe_completo', acao: 'livre', custoPE: '0' });
