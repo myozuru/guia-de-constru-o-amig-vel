@@ -6,10 +6,10 @@
   "entidades": [
     {
       "id": "preset-baculo-aetheris",
-      "versao": 1,
+      "versao": 2,
       "nome": "Aetheris, o Báculo do Firmamento",
       "categoria": "arma",
-      "descricao": "**Complexa • Corpo-a-corpo • Báculo**\nDano: 2d8 Impacto\nMargem de crítico: 19–20 (×2)\nEspaços: 2 • Grau: Especial • Raridade: Lendário\nPropriedades: Duas Mãos, Estendida, Especial\n\n**Asas do Firmamento (Passiva):** +3 m de Deslocamento e ignora Terreno Difícil de obstáculos naturais. Pode planar, anulando dano de quedas de até 18 m. Uma vez por rodada, ao acertar com o báculo, libera uma rajada de +3d8 de dano Sônico e empurra o alvo até 3 m.\n\n**Crítico de Aetheris:** em um acerto crítico, causa +11d8 de dano Sônico; o alvo faz TR de Fortitude (CD do usuário) e, na falha, não pode usar Reações até o início do próximo turno do portador. Combina com Ruptura do Firmamento se houver Reação disponível.\n\n**Plumas da Tempestade (Ação Comum, 8 PE):** até três ataques à distância (18 m) entre até três inimigos, 8d8 Cortante cada. Depois, pode se deslocar até 4,5 m sem provocar Ataques de Oportunidade.\n\n**Reversão dos Ventos (Reação, 7 PE):** contra um ataque à distância em si ou aliado a até 9 m, o alvo recebe +5 de Defesa contra ele. Se errar, devolve uma rajada: ataque à distância de 5d8 Sônico.\n\n**Trono das Nuvens (Ação Comum, 9 PE):** coluna de vento com raio de 3 m a até 18 m. TR de Fortitude: na falha, 5d8 Impacto e as criaturas ficam suspensas a 4,5 m até o início do próximo turno do portador (sem voo, não andam); no sucesso, metade do dano. Ao terminar, descem sem dano de queda.\n\n**Réquiem dos Céus (Ação Completa, 18 PE, 1× por cena):** ponto a até 24 m, raio de 9 m. TR de Fortitude (suspensos têm –2): na falha, 18d12 Sônico, arremesso de 6 m e Caído; no sucesso, metade do dano. Até três aliados na área podem ser levados até 9 m sem dano.\n\n**Ruptura do Firmamento (Reação, 2 PE):** logo após um acerto crítico com Aetheris, +8d12 Sônico (não multiplicado pelo crítico), arremessa o alvo até 6 m e ele faz TR de Fortitude; na falha, fica Caído.",
+      "descricao": "**Complexa • Corpo-a-corpo • Báculo**\nDano: 2d8 Impacto\nMargem de crítico: 19–20 (×2)\nEspaços: 2 • Grau: Especial • Raridade: Lendário\nPropriedades: Duas Mãos, Estendida, Especial\n\n**Asas do Firmamento (Passiva):** +3 m de Deslocamento e ignora Terreno Difícil de obstáculos naturais. Pode planar, anulando dano de quedas de até 18 m. Uma vez por rodada, ao acertar com o báculo, libera uma rajada de +3d8 de dano Sônico e empurra o alvo até 3 m.\n\n**Julgamento dos Ventos (Crítico):** em um acerto crítico, causa +5d8 de dano Sônico; o alvo faz TR de Fortitude (CD do usuário) e, na falha, não pode usar Reações até o início do próximo turno do portador. Combina com Ruptura do Firmamento se houver Reação disponível.\n\n**Plumas da Tempestade (Ação Comum, 8 PE):** até três ataques à distância (18 m) entre até três inimigos, 6d8 Cortante cada. Depois, pode se deslocar até 4,5 m sem provocar Ataques de Oportunidade.\n\n**Reversão dos Ventos (Reação, 7 PE):** contra um ataque à distância em si ou aliado a até 9 m, o alvo recebe +5 de Defesa contra ele. Se errar, devolve uma rajada: ataque à distância de 5d8 Sônico.\n\n**Trono das Nuvens (Ação Comum, 9 PE):** coluna de vento com raio de 3 m a até 18 m. TR de Fortitude: na falha, 5d8 Impacto e as criaturas ficam suspensas a 4,5 m até o início do próximo turno do portador (sem voo, não andam); no sucesso, metade do dano. Ao terminar, descem sem dano de queda.\n\n**Réquiem dos Céus (Ação Completa, 18 PE, 1× por cena):** ponto a até 24 m, raio de 9 m. TR de Fortitude (suspensos têm –2): na falha, 15d10 Sônico, arremesso de 6 m e Caído; no sucesso, metade do dano. Até três aliados na área podem ser levados até 9 m sem dano.\n\n**Ruptura do Firmamento (Reação, 2 PE):** logo após um acerto crítico com Aetheris, +10d10 Sônico (não multiplicado pelo crítico), arremessa o alvo até 6 m e ele faz TR de Fortitude; na falha, fica Caído.",
       "icone": "🪽",
       "tags": [
         "preset",
@@ -25,7 +25,9 @@
         "grau:especial",
         "raridade:lendario"
       ],
-      "duracao": { "tipo": "permanente" },
+      "duracao": {
+        "tipo": "permanente"
+      },
       "custos": [],
       "gatilhos": [],
       "acoesAtivas": [
@@ -39,7 +41,7 @@
           "filtro_alvo": "inimigos",
           "max_alvos": "3",
           "teste": "ataque",
-          "dano": "8d8",
+          "dano": "6d8",
           "tipoDano": "Cortante"
         },
         {
@@ -62,7 +64,10 @@
           "alcanceM": 18,
           "tipo_alvo": "area",
           "filtro_alvo": "todos_exceto_si",
-          "area": { "forma": "raio_no_ponto", "tamanho_m": 3 },
+          "area": {
+            "forma": "raio_no_ponto",
+            "tamanho_m": 3
+          },
           "teste": "tr",
           "tr": "fortitude",
           "metadeNoSucesso": true,
@@ -77,11 +82,14 @@
           "alcanceM": 24,
           "tipo_alvo": "area",
           "filtro_alvo": "todos_exceto_si",
-          "area": { "forma": "raio_no_ponto", "tamanho_m": 9 },
+          "area": {
+            "forma": "raio_no_ponto",
+            "tamanho_m": 9
+          },
           "teste": "tr",
           "tr": "fortitude",
           "metadeNoSucesso": true,
-          "dano": "18d12",
+          "dano": "15d10",
           "tipoDano": "Sônico"
         },
         {
@@ -93,7 +101,7 @@
           "tipo_alvo": "unico",
           "filtro_alvo": "inimigos",
           "teste": "nenhum",
-          "dano": "8d12",
+          "dano": "10d10",
           "tipoDano": "Sônico"
         }
       ],
@@ -102,11 +110,25 @@
       "atualizadoEm": 1792368000000,
       "combatData": {
         "effects": [
-          { "id": "aetheris-dano", "formula": "2d8", "type": "SUBTRAIR", "target": "ALVO", "damageType": "Impacto", "resourcePath": "vida_atual" }
+          {
+            "id": "aetheris-dano",
+            "formula": "2d8",
+            "type": "SUBTRAIR",
+            "target": "ALVO",
+            "damageType": "Impacto",
+            "resourcePath": "vida_atual"
+          }
         ],
         "effectsPassive": [],
         "effectsActive": [
-          { "id": "aetheris-dano", "formula": "2d8", "type": "SUBTRAIR", "target": "ALVO", "damageType": "Impacto", "resourcePath": "vida_atual" }
+          {
+            "id": "aetheris-dano",
+            "formula": "2d8",
+            "type": "SUBTRAIR",
+            "target": "ALVO",
+            "damageType": "Impacto",
+            "resourcePath": "vida_atual"
+          }
         ],
         "critRange": 19,
         "critMultiplier": 2,
