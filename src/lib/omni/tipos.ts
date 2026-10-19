@@ -243,7 +243,7 @@ export type EfeitoMovimentoAtivo = {
 };
 
 export type EfeitoSecundarioAtivo =
-  | { tipo: 'condicao'; condicao: string; rodadas: number }
+  | { tipo: 'condicao'; condicao: string; rodadas: number; /** Dura até o início do próximo turno do usuário. */ ate_inicio_turno_usuario?: boolean }
   | { tipo: 'remover_condicao'; condicao: string }
   | { tipo: 'pv_temporarios' | 'escudo'; valor: string; rodadas: number }
   | { tipo: 'puxar' | 'empurrar'; metros: number }
