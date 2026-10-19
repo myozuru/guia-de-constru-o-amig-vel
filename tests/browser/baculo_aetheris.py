@@ -18,7 +18,7 @@ async def dados(pg, n=5):
 SNAP = """(()=>{const g=i=>window.__charStore.getState().characters.find(c=>c.id===i);const a=g('teste-esp'),t=g('teste-ini');
 return {PE:a.peCurrent,acao:a.actionsCurrent,bonus:a.bonusActionsCurrent,usos:a.omniUsosCena,hpAlvo:t.hpCurrent,cond:(t.activeConditions||[]).map(c=>c.conditionId)}})()"""
 RESOLVE = """async()=>{const m=await import('/src/stores/useAlvoMapaStore.ts');if(m.useAlvoMapaStore.getState().pending){m.terminarAlvoMapa(['teste-ini']);return 'alvo'}
-const ms=window.__mapStore.getState();if(ms.pendingAoEPlacement){ms.resolveAoEPlacement({x:4*window.__D+window.__D/2,y:window.__D/2});return 'area'};return ''}"""
+const ms=window.__mapStore.getState();if(ms.pendingAoEPlacement){ms.resolveAoEPlacement({id:'t',kind:'circle',x:4*window.__D+window.__D/2,y:window.__D/2,rotation:0,length:3*window.__D,width:0,color:'red',opacity:.3});return 'area'};return ''}"""
 
 async def usar(pg, nome):
     await pg.get_by_text("Fichas", exact=True).first.click(force=True); await pg.wait_for_timeout(1000)
@@ -27,6 +27,7 @@ async def usar(pg, nome):
     card = pg.get_by_test_id("acao-ativa-" + nome).locator("visible=true").first
     await card.locator("button[aria-expanded]").click(); await pg.wait_for_timeout(300)
     bt = card.get_by_role("button", name="Usar")
+    if not await bt.count(): bt = card.get_by_role("button", name="Usando…")
     if await bt.is_disabled():
         print(nome, "→ BOTÃO BLOQUEADO"); return
     await bt.click(no_wait_after=True)
