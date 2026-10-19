@@ -28,8 +28,10 @@ async def usar(pg, nome):
     card = pg.get_by_test_id("acao-ativa-" + nome).locator("visible=true").first
     await card.locator("button[aria-expanded]").click(); await pg.wait_for_timeout(300)
     bt = card.get_by_role("button", name="Usar")
-    if not await bt.count(): bt = card.get_by_role("button", name="Usando…")
-    if await bt.is_disabled():
+    if not await bt.count() or await bt.is_disabled():
+        print(nome, "→ BLOQUEADO:", (await card.inner_text())[:300].replace("\n", " | "))
+        return
+    if False:
         print(nome, "→ BOTÃO BLOQUEADO"); return
     await bt.click(no_wait_after=True)
     for _ in range(8):
