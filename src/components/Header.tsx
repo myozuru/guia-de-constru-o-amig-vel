@@ -43,7 +43,7 @@ const TAB_LABELS: Record<TabId, string> = {
   grimorio: 'Grimório',
 };
 
-const TAB_ICONS: Record<TabId, React.ElementType> = {
+const TAB_ICONS: Record<TabId, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
   relogio: Clock,
   fichas: Users,
   invocacoes: Ghost,
@@ -362,7 +362,7 @@ export function Header({ activeTab, onTabChange, testsOpen = false, onToggleTest
                 align="end"
                 sideOffset={8}
                 className="w-64 max-w-[calc(100vw-1rem)]"
-                onOpenAutoFocus={(event) => {
+                onFocusCapture={(event) => {
                   if (!activeMenuItemRef.current) return;
                   event.preventDefault();
                   activeMenuItemRef.current.focus();

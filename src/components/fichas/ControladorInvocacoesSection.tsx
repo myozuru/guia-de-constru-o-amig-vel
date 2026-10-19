@@ -1151,7 +1151,7 @@ export function ControladorInvocacoesSection({ character, onEditFicha, onCreateF
                   </div>
                   <div className="inv-profile-description">
                     <span>Descrição</span>
-                    <p>{forma.descricao}</p>
+                    <p>{("descricao" in forma ? String(forma.descricao) : "")}</p>
                   </div>
                   <footer className="inv-profile-card-footer">
                     {isAlreadyInCatalog ? (
