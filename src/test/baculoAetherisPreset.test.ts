@@ -11,9 +11,9 @@ describe('preset Báculo Aetheris', () => {
     expect(ent.combatData.critMultiplier).toBe(2);
     expect(ent.tags).toContain('mao:2');
   });
-  it('Plumas: 8 PE, até 3 alvos a 18 m', () => {
+  it('Plumas: 8 PE, até 3 alvos a 18 m, 6d8', () => {
     const a = acao('aa-aetheris-plumas');
-    expect([a.custoPE, a.max_alvos, a.alcanceM]).toEqual(['8', '3', 18]);
+    expect([a.custoPE, a.max_alvos, a.alcanceM, a.dano]).toEqual(['8', '3', 18, '6d8']);
   });
   it('Reversão: reação de 7 PE a 9 m, 5d8 Sônico', () => {
     const a = acao('aa-aetheris-reversao');
@@ -23,12 +23,12 @@ describe('preset Báculo Aetheris', () => {
     const a = acao('aa-aetheris-trono');
     expect([a.custoPE, a.area?.tamanho_m, a.metadeNoSucesso]).toEqual(['9', 3, true]);
   });
-  it('Réquiem: 18 PE, raio 9 m a 24 m, 18d12', () => {
+  it('Réquiem: 18 PE, raio 9 m a 24 m, 15d10', () => {
     const a = acao('aa-aetheris-requiem');
-    expect([a.custoPE, a.alcanceM, a.area?.tamanho_m, a.dano]).toEqual(['18', 24, 9, '18d12']);
+    expect([a.custoPE, a.alcanceM, a.area?.tamanho_m, a.dano]).toEqual(['18', 24, 9, '15d10']);
   });
-  it('Ruptura: reação de 2 PE, 8d12 Sônico', () => {
+  it('Ruptura: reação de 2 PE, 10d10 Sônico', () => {
     const a = acao('aa-aetheris-ruptura');
-    expect([a.acao, a.custoPE, a.dano]).toEqual(['reacao', '2', '8d12']);
+    expect([a.acao, a.custoPE, a.dano]).toEqual(['reacao', '2', '10d10']);
   });
 });
