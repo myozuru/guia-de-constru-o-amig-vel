@@ -175,7 +175,7 @@ const AcaoAtivaSchema = z.object({
     alvo: z.enum(['origem', 'protegido', 'usuario']), cancelar_evento: z.boolean().optional(), defesa_bonus: z.number().finite().nonnegative().optional(),
     bonus_teste: z.number().finite().optional(), dano_minimo: z.number().finite().nonnegative().optional(),
   }).optional(),
-  id: z.string(), nome: z.string(), acao: z.enum(['comum', 'bonus', 'reacao', 'movimento', 'livre']),
+  id: z.string(), nome: z.string(), acao: z.enum(['comum', 'bonus', 'reacao', 'movimento', 'livre', 'completa']), usos_por_cena: z.number().int().positive().optional(),
   custo_recursos: z.object({
     pe_base: z.string().optional(), pe_por_intensificacao: z.string().optional(),
     max_intensificacoes: z.string().optional(), limite_pe: z.string().optional(),

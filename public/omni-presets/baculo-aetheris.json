@@ -76,8 +76,9 @@
         },
         {
           "id": "aa-aetheris-requiem",
-          "nome": "Réquiem dos Céus (Ação Completa, 1× por cena)",
-          "acao": "comum",
+          "nome": "Réquiem dos Céus",
+          "acao": "completa",
+          "usos_por_cena": 1,
           "custoPE": "18",
           "alcanceM": 24,
           "tipo_alvo": "area",
